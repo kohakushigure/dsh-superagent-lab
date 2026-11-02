@@ -7,6 +7,26 @@
 
 ## [Unreleased]
 
+### Added
+- Loop console: static SPA (`local-superagent/ui/`) with tasks / pending decisions / subscriptions / events / ingest views; legacy page kept at `/legacy`.
+- `POST /api/*` ingest authentication via `SUPERAGENT_AUTH_TOKEN` (header `x-auth-token` or Bearer).
+- Retention: hourly prune of terminal triggers and log tables (`RETENTION_DAYS`, default 14).
+- `scripts/hosting/watchdog-ext.mjs`: out-of-process watchdog with restart budget.
+- `scripts/hosting/start-all.ps1`: one-command stack (loop + selfcheck + watchdog), `-Status` / `-Stop`.
+- `scripts/hosting/github-poll.mjs`: GitHub issue/PR comment source with ETag + watermark dedupe and rate-limit backoff.
+- `research/papers/README.md`: related-work mapping (ReAct, Reflexion, Voyager, Toolformer, Generative Agents, AutoGen, MetaGPT, CoALA, AgentBench, CAMEL).
+
+### Changed
+- Worker prompt + duplicate-call gate: identical `(tool,args)` calls are blocked and reported, fixing a real-model loop that the in-process watchdog used to kill.
+- Env file `local-superagent/.env.local` is auto-loaded, so a restart (by watchdog or shell) keeps the model configuration.
+- Panel honours `listen(0)` for tests; tests no longer pick random high ports.
+
+### Fixed
+- Cross-thread batching merged unrelated projects into one ticket; batching is now per thread.
+- `-Remove` of autostart now clears all three tiers (scheduled task, Startup folder, HKCU Run).
+- selfcheck re-emitted identical findings every cycle; added a 6h signature cooldown.
+
+
 ### 计划
 - 把 `local-superagent` 的 governance（panel token / retention）收尾，让 29 个用例全绿（见下「已知问题」）。
 
