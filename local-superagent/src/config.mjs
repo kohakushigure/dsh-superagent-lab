@@ -43,7 +43,7 @@ function list(v, d) {
   return String(v).split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-const DEFAULT_ACCEPT_REGEX = '@superagent|/agent|@agent|请处理|帮我处理|please handle';
+const DEFAULT_ACCEPT_REGEX = '@superagent|/agent|@agent|@dsh-superagent|请处理|帮我处理|please handle';
 
 /** PROJECTS: 'proj/=G:\\path\\a;blog/=G:\\path\\b' or a JSON object { 'proj/': 'G:\\path\\a' } */
 function parseProjects(v) {
