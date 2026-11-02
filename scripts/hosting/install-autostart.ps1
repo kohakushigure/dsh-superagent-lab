@@ -19,7 +19,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$starter = Join-Path $PSScriptRoot 'start-hosted.ps1'
+$starter = Join-Path $PSScriptRoot 'start-all.ps1'   # 统一入口：loop + selfcheck + watchdog-ext
 $startupDir = [Environment]::GetFolderPath('Startup')
 $startupCmd = Join-Path $startupDir 'superagent-host.cmd'
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
