@@ -1,0 +1,28 @@
+# ---- runtime state (never commit) ----
+node_modules/
+local-superagent/state/
+local-superagent/state-*/
+local-superagent/.work/
+deploy/dsh-home/
+deploy/state/
+deploy/run/
+deploy/logs/
+deploy/backup/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# ---- third-party clone (MIT, patched locally): clone it yourself ----
+deploy/upstream/
+
+# ---- local verification artifacts (large) ----
+verify-out/
+local-superagent/evidence/hosting/state*/
+local-superagent/evidence/hosting/*.log
+local-superagent/evidence/hosting/*.jsonl
+local-superagent/evidence/hosting/*.json
+local-superagent/evidence/*.jsonl
+
+# ---- scratch ----
+_smoke*
+*.tmp

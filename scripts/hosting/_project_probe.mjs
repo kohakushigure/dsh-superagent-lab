@@ -1,0 +1,10 @@
+import { Engine } from '../../local-superagent/src/engine.mjs';
+const e = await Engine.create({ echo: false, recover: false });
+console.log('cfg.projects =', JSON.stringify(e.cfg.projects));
+await e.submit({ text: '@superagent test project binding', source: 'http', threadId: 'demo-blog/issue-9', author: 'u' });
+await e.tick({ force: true });
+await e.drain();
+const t = e.repo.listTasks(1)[0];
+console.log('task =', JSON.stringify({ id: t.id, project: t.project, workdir: t.workdir }, null, 1));
+console.log('cols =', JSON.stringify(e.db.prepare('pragma table_info(tasks)').all().map(c=>c.name)));
+await e.close();

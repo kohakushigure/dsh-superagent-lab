@@ -1,0 +1,7 @@
+node_modules/
+state/
+state-test/
+state-ablation-*/
+.work/
+*.log
+testkit/.tmp/

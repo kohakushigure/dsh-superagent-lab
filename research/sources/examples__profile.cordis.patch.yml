@@ -1,0 +1,19 @@
+<!--
+  source_url : https://raw.githubusercontent.com/deepseek-ai/dsh-superagent-prototype/main/examples/profile.cordis.patch.yml
+  fetched_at : 2026-11-02T18:5x+08:00 (Asia/Shanghai) / 2026-11-02T10:5xZ  [curl.exe -L, raw.githubusercontent.com, branch=main]
+  sha256     : db41555406a3f2dd7a77f7c40f565d0b9572984db8b9dcd6dcb9c6dce7004067
+  bytes      : 474
+  note       : 以下为逐字原文，未改写、未截断；行号以本文件为基准（含上面 7 行头部偏移）。
+-->
+# Example profile configuration ($DSH_HOME/profiles/<profile>/cordis.patch.yml).
+# Replace <placeholders> before first start; see docs/006-deployment.md.
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3082
+- id: dsh-superagent
+  config:
+    stateDir: <absolute path, for example /home/me/.dsh/state/superagent>
+# Feishu is optional: uncomment to enable its Source, then set the bot's lark-cli on the Feishu Source.
+# - id: dsh-superagent-feishu
+#   disabled: false

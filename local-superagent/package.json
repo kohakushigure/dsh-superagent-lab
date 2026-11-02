@@ -1,0 +1,19 @@
+{
+  "name": "local-superagent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone minimal Super-agent (Router/Worker, two-level filter, subscription passthrough, context cache, watchdog) built only on Node 24 built-ins",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node bin/demo.mjs",
+    "start": "node bin/superagent.mjs start",
+    "status": "node bin/superagent.mjs status"
+  },
+  "bin": {
+    "local-superagent": "bin/superagent.mjs"
+  }
+}

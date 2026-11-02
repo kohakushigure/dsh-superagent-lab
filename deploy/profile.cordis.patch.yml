@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# profile.cordis.patch.yml — machine configuration for the `superagent` DSH profile
+#
+# Source: deploy/upstream/dsh-superagent-prototype/examples/profile.cordis.patch.yml
+# (12 lines, git 6337fc8). Placeholders replaced with measured values.
+# Ported from docs/006-deployment.md "Machine configuration" (006:89-98).
+#
+# Install to:  <DSH_HOME>/profiles/superagent/cordis.patch.yml
+#   A-plan on WSL2/Linux      : cp deploy/profile.cordis.patch.yml ~/.dsh/profiles/superagent/cordis.patch.yml
+#   A-plan on native Windows  : Copy-Item deploy\profile.cordis.patch.yml deploy\dsh-home\profiles\superagent\cordis.patch.yml -Force
+#                               (only after applying deploy/patches/windows-absolute-path.patch — see below)
+#
+# HARD CONSTRAINT (measured 2026-11-02, dsh 0.2.1-rc.4):
+#   stateDir is validated against /^\// — a POSIX absolute path. A Windows drive-letter
+#   path such as G:\... is REJECTED at mount time:
+#       dsh-superagent: ValidationError: invalid config:
+#         - $.stateDir expect string to match regexp /^\// (at stateDir)
+#   Source: src/deployment.ts:13 absolute() = s.string().pattern(/^\//), used at :16.
+#   Consequence: the stock upstream bundle cannot start on native Windows with any
+#   Windows path. Two ways out:
+#     (1) run the whole stack under WSL2/Linux, where a POSIX path is natural; or
+#     (2) apply deploy/patches/windows-absolute-path.patch (2 lines, moves the schema to
+#         /^(\/|[A-Za-z]:[\\/])/), rebuild with `pnpm build`, then use the Windows block below.
+#   The measured run in deploy/env-report.md used route (2).
+#
+# Other rules: stateDir must be absolute, cannot be changed from the panel afterwards,
+# and holds the SQLite database, the lock, worker-bin shims, worker-gitconfig and the
+# per-Ticket work directories. Back it up before every upgrade (006:235-242).
+# YAML single quotes keep backslashes literal.
+# ---------------------------------------------------------------------------
+
+# The panel's listener. 3082 keeps it clear of the operator's own DSH Web profile
+# (3080 by default) and of the desktop app (13399 on this machine).
+# Equivalent one-off alternative: dsh --profile superagent --port 3082 --no-open
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 3082
+
+# --- stateDir: pick exactly ONE of the two blocks below -------------------------
+
+# ROUTE 1 (default, WSL2 / Linux / container): POSIX absolute path. Works with the
+# stock upstream bundle, no patch.
+- id: dsh-superagent
+  config:
+    stateDir: '/home/me/.dsh/state/superagent'
+    # Machine limits — these ARE the upstream defaults, keep them unless you must change them.
+    # Source: src/deployment.ts:17,19,22; ranges in src/limits.ts.
+    promptMaxChars: 100000            # range 1000 .. 1000000
+    admissionContextMaxPages: 10      # range 1 .. 100
+    admissionContextTimeoutMs: 15000  # range 1 .. 90000
+
+# ROUTE 2 (native Windows, ONLY after deploy/patches/windows-absolute-path.patch is
+# applied and `pnpm build` re-run). Uncomment and delete ROUTE 1's block:
+# - id: dsh-superagent
+#   config:
+#     stateDir: 'G:\Agent-workspace\dsh-superagent\deploy\state'
+#     promptMaxChars: 100000
+#     admissionContextMaxPages: 10
+#     admissionContextTimeoutMs: 15000
+
+# Feishu is optional and OFF by default. Uncomment to enable its Source, then set the
+# bot's lark-cli wrapper on the Feishu card in the panel (006:49-69).
+# - id: dsh-superagent-feishu
+#   disabled: false
