@@ -60,3 +60,23 @@ test('retention: prunes old terminal triggers and logs, keeps tasks and live tri
     cleanup(dir);
   }
 });
+test('ui: serves the console SPA and refuses to serve source files', async () => {
+  const { engine, dir } = await makeEngine('ui', { retention: { days: 0 } });
+  try {
+    const { url } = await engine.start({ port: 0 });
+    const root = await fetch(url + '/');
+    assert.equal(root.status, 200);
+    const html = await root.text();
+    assert.match(html, /app\.js/);
+    const js = await fetch(url + '/app.js');
+    assert.equal(js.status, 200);
+    assert.match(js.headers.get('content-type') || '', /javascript/);
+    const css = await fetch(url + '/styles.css');
+    assert.equal(css.status, 200);
+    const leak = await fetch(url + '/ui/../src/config.mjs');
+    assert.notEqual(leak.status, 200, 'source files must not be reachable through the static handler');
+  } finally {
+    await engine.close();
+    cleanup(dir);
+  }
+});

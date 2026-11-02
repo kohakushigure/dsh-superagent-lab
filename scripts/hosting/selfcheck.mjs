@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, cur, i, arr) => {
   if (cur.startsWith('--')) { const k = cur.slice(2); const v = arr[i + 1] && !arr[i + 1].startsWith('--') ? arr[i + 1] : true; acc.push([k, v]); }
@@ -18,10 +19,13 @@ const PORT = Number(args.port || 3082);
 const DRY = Boolean(args.dry);
 const INTERVAL = Number(args.interval || 0);
 const AUTH = args.token || process.env.SUPERAGENT_AUTH_TOKEN || '';
+const COOLDOWN = Number(args.cooldown || 6 * 3600) * 1000;   // 同一批发现的最小重投间隔
 const authHeaders = AUTH ? { 'x-auth-token': AUTH } : {};
 const ROOT = path.resolve(new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 const DOCS = path.join(ROOT, 'docs');
 const SA = path.join(ROOT, 'local-superagent');
+const CACHE_DIR = path.join(ROOT, '.cache');
+const CACHE = path.join(CACHE_DIR, 'selfcheck-state.json');
 
 const facts = { at: new Date().toISOString(), root: ROOT, docs: {}, links: {}, tests: {}, work: {}, evidence: {}, git: {} };
 
@@ -86,6 +90,20 @@ if (!INTERVAL && !args['quiet-probes']) {
 }
 
 facts.events = events;
+
+// 冷却：同一批发现（按内容哈希）在 COOLDOWN 内不重复投递，避免巡检把 loop 变成噪音源
+const sig = crypto.createHash('sha1').update(JSON.stringify(events.map((e) => e.thread + '|' + e.text))).digest('hex');
+let state = {};
+try { state = JSON.parse(fs.readFileSync(CACHE, 'utf8')); } catch {}
+const fresh = state.sig === sig && (Date.now() - (state.at || 0)) < COOLDOWN;
+const suppress = fresh && !args.force;
+if (suppress) {
+  console.log('COOLDOWN same findings as ' + new Date(state.at).toISOString() + ', skipping ' + events.length + ' event(s)');
+  if (INTERVAL === 0) process.exit(0);
+} else {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+  fs.writeFileSync(CACHE, JSON.stringify({ sig, at: Date.now(), count: events.length }), 'utf8');
+}
 console.log(JSON.stringify(facts, null, 2));
 
 async function emitAll() {
@@ -101,7 +119,7 @@ async function emitAll() {
   }
 }
 
-await emitAll();
+if (!suppress) await emitAll();
 
 if (INTERVAL > 0) {
   console.log('watch mode: re-checking every ' + INTERVAL + 's; only real findings are emitted');

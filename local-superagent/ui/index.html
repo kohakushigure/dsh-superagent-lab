@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>local-superagent</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot" id="dot"></span> local-superagent <span class="muted">loop console</span></div>
+  <div class="pills" id="pills"></div>
+  <div class="right">
+    <input id="token" type="password" placeholder="x-auth-token（可选）" autocomplete="off" />
+    <span class="muted" id="stamp">—</span>
+  </div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="tasks" class="on">工单</button>
+  <button data-tab="decisions">待人工 <span id="badge" class="badge">0</span></button>
+  <button data-tab="subs">订阅</button>
+  <button data-tab="events">事件流</button>
+  <button data-tab="ingest">投递</button>
+</nav>
+
+<main>
+  <section id="pane-tasks">
+    <div class="row between"><h2>工单</h2><span class="muted" id="taskStat"></span></div>
+    <table><thead><tr><th>id</th><th>状态</th><th>项目</th><th>标题</th><th>尝试</th><th>交付物</th><th></th></tr></thead><tbody id="tasks"></tbody></table>
+  </section>
+
+  <section id="pane-decisions" hidden>
+    <h2>待人工决定</h2>
+    <div id="decisions" class="cards"></div>
+  </section>
+
+  <section id="pane-subs" hidden>
+    <h2>订阅（thread → worker session）</h2>
+    <table><thead><tr><th>thread</th><th>task</th><th>session</th><th>状态</th><th>命中</th><th></th></tr></thead><tbody id="subs"></tbody></table>
+  </section>
+
+  <section id="pane-events" hidden>
+    <h2>事件流</h2>
+    <ul id="events" class="timeline"></ul>
+  </section>
+
+  <section id="pane-ingest" hidden>
+    <h2>投递一条事件</h2>
+    <p class="muted">等价于 <code>POST /api/triggers</code>。文本里通常要带 <code>@superagent</code> 这类地址词，否则会被 fast path 判为 no-mention。</p>
+    <div class="grid">
+      <label>文本<textarea id="f-text" rows="4" placeholder="@superagent 读 docs/07 的前 60 行，写一份 80 字摘要到 agent-out/"></textarea></label>
+      <label>thread<input id="f-thread" value="self/docs" /></label>
+      <label>source<input id="f-source" value="http" /></label>
+      <label>author<input id="f-author" value="panel" /></label>
+    </div>
+    <button id="send" class="primary">投递</button>
+    <pre id="result" class="out"></pre>
+  </section>
+</main>
+
+<footer><span class="muted">loop console · 自动刷新 2s · 写操作需要 token（若服务端设置了 SUPERAGENT_AUTH_TOKEN）</span></footer>
+<script src="/app.js"></script>
+</body>
+</html>

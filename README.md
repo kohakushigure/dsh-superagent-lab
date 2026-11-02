@@ -55,7 +55,9 @@ dsh-superagent/
 │  ├─ 05-validation-report.md     端到端验收记录
 │  ├─ 06-fact-check.md            事实核查：每条声明→出处→判定（含纠错）
 │  ├─ 07-loop-hosting-feasibility.md  本机能不能常驻托管/托管小项目（实测）
-│  └─ 08-selfloop.md              让这个 loop 管这个项目的实跑记录
+│  ├─ 08-selfloop.md              让这个 loop 管这个项目的实跑记录
+│  ├─ 09-loop-log.md              loop 模式运行日志（按轮次）
+│  └─ 10-console.md               控制台（前后端入口）
 ├─ research/                     上游原文抓取快照（带 URL/时间/SHA256）
 ├─ deploy/                       官方原型部署产物：upstream 克隆、profile、脚本、日志
 ├─ local-superagent/             自建可运行实现（Node 24，零重型依赖）

@@ -1,4 +1,23 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const UI_DIR = path.resolve(fileURLToPath(new URL('../ui/', import.meta.url)));
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8' };
+
+/** 静态前端：只允许 ui/ 目录下的 html/js/css/svg，路径穿越一律拒绝。 */
+function staticFile(urlPath) {
+  const map = { '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css' };
+  let rel = map[urlPath];
+  if (!rel && urlPath.startsWith('/ui/')) rel = urlPath.slice(4);
+  if (!rel) return null;
+  const abs = path.resolve(UI_DIR, rel);
+  if (!abs.startsWith(UI_DIR + path.sep)) return null;
+  if (!MIME[path.extname(abs)]) return null;
+  if (!fs.existsSync(abs)) return null;
+  return { abs, type: MIME[path.extname(abs)] };
+}
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -126,7 +145,16 @@ export function createPanel(opts) {
     if (req.method === 'POST' && url.pathname.startsWith('/api/') && !authorized(req)) {
       return json(res, 401, { ok: false, error: 'unauthorized: send x-auth-token or Authorization: Bearer' });
     }
-    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+    // 真正的控制台（静态 SPA）；旧的单页视图保留在 /legacy
+    if (req.method === 'GET') {
+      const f = staticFile(url.pathname);
+      if (f) {
+        res.writeHead(200, { 'content-type': f.type, 'cache-control': 'no-store' });
+        res.end(fs.readFileSync(f.abs));
+        return;
+      }
+    }
+    if (req.method === 'GET' && (url.pathname === '/legacy')) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(page());
       return;
