@@ -1,7 +1,17 @@
-# dsh-superagent 研究仓库
+# dsh-superagent-lab
+
+**DeepSeek Super-agent（2026-10-31）研究 + 一个真能跑的本地托管 loop。**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Node](https://img.shields.io/badge/node-%E2%89%A524-3c873a)
+![Tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)
+![Probes](https://img.shields.io/badge/independent%20probes-267%2F267-blue)
 
 > 目标：完全理解 DeepSeek 在 **2026-10-31** 发布的 Super-agent 方案，并搞清楚"怎么在本机部署一个 superagent"。
-> 所有研究、代码、日志、文档都只落在本目录内。
+>
+> 本仓库是**独立研究产出**，与 DeepSeek 官方无关；上游研究原型（MIT）的源码副本未包含在内，见 [NOTICE.md](NOTICE.md)。
+>
+> 三句话结论：①它真正新的只有一件事——把"人手动切会话"换成"系统分诊 + 并行执行 + 回原对话"；②官方原型是研究代码，**原生 Windows 跑不通**（两道 POSIX 硬墙，实测记录在 docs/03）；③本仓库的 `local-superagent/` 是零依赖重实现，本机可跑，且已经在管它自己的仓库（docs/08）。
 
 本仓库回答三个问题：
 
