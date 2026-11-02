@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeEngine, cleanup } from '../testkit/helpers.mjs';
+import { loadConfig } from '../src/config.mjs';
 
 test('auth: POST /api/triggers is 401 without token and 200 with it', async () => {
   const { engine, dir } = await makeEngine('auth', { panel: { authToken: 's3cret' }, retention: { days: 0 } });
@@ -75,6 +76,27 @@ test('ui: serves the console SPA and refuses to serve source files', async () =>
     assert.equal(css.status, 200);
     const leak = await fetch(url + '/ui/../src/config.mjs');
     assert.notEqual(leak.status, 200, 'source files must not be reachable through the static handler');
+  } finally {
+    await engine.close();
+    cleanup(dir);
+  }
+});
+test('watchdog default stall window is long enough for a real reasoning model', () => {
+  const cfg = loadConfig({});
+  assert.equal(cfg.watchdog.stallMs, 120000);
+});
+
+test('a failed task releases its thread subscriptions so later events go back to the router', async () => {
+  const { engine, dir } = await makeEngine('release', { worker: { maxSteps: 0, shellProbe: false }, retention: { days: 0 } });
+  try {
+    await engine.submit({ text: '@superagent do something that cannot finish', source: 'cli', threadId: 'rel/1', author: 'u' });
+    await engine.tick({ force: true });
+    await engine.drain();
+    const subs = engine.repo.listSubscriptions(10).filter((s) => (s.thread_id || '').startsWith('rel/'));
+    assert.ok(subs.length > 0, 'a ticket should have created a subscription first');
+    const task = engine.repo.listTasks(1)[0];
+    assert.equal(task.status, 'failed');
+    assert.ok(subs.every((s) => s.status === 'closed'), 'failed task must not keep the thread hostage');
   } finally {
     await engine.close();
     cleanup(dir);

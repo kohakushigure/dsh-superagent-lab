@@ -37,3 +37,5 @@ local-superagent/.env.local
 projects/
 research/raw/
 agent-out/*.log
+# 发布回退包（本地生成，不入库）
+dist/
