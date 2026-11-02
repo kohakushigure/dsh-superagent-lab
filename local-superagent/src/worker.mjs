@@ -15,7 +15,12 @@ const WORKER_SYSTEM = [
   'Available tools:',
   TOOL_SPEC.map((t) => '  - ' + t.name + ' ' + JSON.stringify(t.args) + ' :: ' + t.note).join('\n'),
   'Rules: never leave the work directory, prefer small verifiable steps, stop as soon as the',
-  'deliverable exists and has been read back.'
+  'deliverable exists and has been read back.',
+  'Hard rules against stalling:',
+  '  - Never call the same tool with the same arguments twice. Repeating a successful call gains nothing.',
+  '  - One fs.read is enough to see a file; if it was truncated, read a different path or act on what you have.',
+  '  - You have a small step budget. After writing the deliverable and reading it back, answer with final.',
+  '  - If a tool returns an error twice, change approach instead of retrying.'
 ].join('\n');
 
 /**
@@ -119,6 +124,8 @@ export class Worker {
     let step = 0;
     let final = null;
     let lastError = null;
+    const seen = new Map();   // tool+args -> 次数，用来挡住“同一调用原地打转”
+    const history = [];       // 本轮已经做过的调用摘要，进 prompt，避免上下文被截断后模型失忆
 
     try {
       while (step < this.cfg.worker.maxSteps) {
@@ -133,6 +140,8 @@ export class Worker {
           '',
           'CONTEXT (this worker session only, spilled entries show a resume id):',
           contextBlock.text || '(empty)',
+          '',
+          history.length ? 'ALREADY DONE THIS RUN (do not repeat):\n' + history.slice(-8).join('\n') : 'ALREADY DONE THIS RUN: (nothing yet)',
           '',
           'STEP ' + (step + 1) + '/' + this.cfg.worker.maxSteps + ' — answer with one JSON action.'
         ].join('\n');
@@ -163,9 +172,19 @@ export class Worker {
           final = { summary: truncate(JSON.stringify(parsed), 800), deliverable: null };
           break;
         }
-        const out = await toolbox.call(parsed.tool, parsed.args || {}, { signal });
-        this.counters.toolCalls += 1;
-        if (out.denied) this.counters.denied += 1;
+        const callKey = parsed.tool + ':' + JSON.stringify(parsed.args || {});
+        const times = (seen.get(callKey) || 0) + 1;
+        seen.set(callKey, times);
+        let out;
+        if (times > 1) {
+          out = { ok: false, denied: false, output: 'duplicate call blocked: ' + parsed.tool + ' was already called with the same args. Do not repeat it — use the result you already have, or take a different action, or answer with final.' };
+          this.repo.event({ kind: 'tool_duplicate', actor: 'worker', taskId, detail: { tool: parsed.tool, times } });
+        } else {
+          out = await toolbox.call(parsed.tool, parsed.args || {}, { signal });
+          this.counters.toolCalls += 1;
+          if (out.denied) this.counters.denied += 1;
+        }
+        history.push('  - ' + parsed.tool + ' ' + JSON.stringify(parsed.args || {}).slice(0, 120) + ' -> ' + (out.ok ? 'ok' : (out.denied ? 'denied' : 'error')));
         this.repo.event({
           kind: out.denied ? 'tool_denied' : 'tool_call',
           actor: 'worker',

@@ -276,4 +276,23 @@ export class Repo {
     return r ? r.value : null;
   }
   delControl(key) { this.run('DELETE FROM control WHERE key = ?', key); }
+
+  // ---- retention ---------------------------------------------------------
+  /**
+   * 按天清理历史：只删“已终结”的触发器与纯日志类表，任务/会话/订阅/决策永不删除。
+   * 返回每张表删掉的行数，便于写进事件日志做审计。
+   */
+  pruneBefore(cutoffMs) {
+    const before = { cutoffMs };
+    const runCount = (sql, ...params) => { const r = this.run(sql, ...params); return r && typeof r.changes === 'number' ? r.changes : 0; };
+    before.triggers = runCount(
+      "DELETE FROM triggers WHERE created_at < ? AND status IN ('dropped','ignored','dispatched','passthrough')",
+      cutoffMs
+    );
+    before.events = runCount('DELETE FROM events WHERE ts < ?', cutoffMs);
+    before.messages = runCount('DELETE FROM messages WHERE created_at < ?', cutoffMs);
+    before.hops = runCount('DELETE FROM hops WHERE created_at < ?', cutoffMs);
+    before.outbox = runCount('DELETE FROM outbox WHERE created_at < ?', cutoffMs);
+    return before;
+  }
 }

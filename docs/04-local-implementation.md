@@ -622,7 +622,83 @@ powershell -ExecutionPolicy Bypass -File scripts/hosting/install-autostart.ps1 -
 
 ---
 
-## 14. 与其它文档的关系
+
+---
+
+## 14. GitHub Source（边缘适配器）
+
+> `scripts/hosting/github-poll.mjs`：把 GitHub 上「提到 agent 的评论」变成 Trigger，POST 给常驻进程的 `/api/triggers`。
+> 它是**独立进程**，`local-superagent/src/` 一行没改。
+
+### 14.1 为什么做成边缘进程而不是改 core
+
+| 理由 | 说明 |
+| --- | --- |
+| 核心稳定 | `src/` 是验收过 267 个探针的实现，加一个渠道不该改动已验证的调度/持久化代码 |
+| 可替换 | 换 Slack / 邮件 / GitLab 时只是换一个生产者，core 的接口就是 `POST /api/triggers` |
+| 故障隔离 | 轮询进程崩了不影响常驻 loop；限流退避只阻塞自己 |
+| 凭据隔离 | `GITHUB_TOKEN` 只存在于轮询进程内存里，core 进程完全不知道 token 的存在 |
+
+### 14.2 认证与限流
+
+- `GITHUB_TOKEN` 从环境变量读，**不落盘、不打印**；未设置时也能跑（未认证 60 req/h），启动时打一行 `{"event":"warn","msg":"GITHUB_TOKEN missing..."}` 提示。
+- **条件请求**：每个 URL 的 `ETag` 存进 state，下次带 `If-None-Match`；`304` 直接跳过（实测第二次轮询基本不会烧配额）。
+- **配额感知**：每次响应读 `X-RateLimit-Remaining` / `X-RateLimit-Reset`；`remaining=0` 时睡到 reset（上限 15 分钟一轮）。
+- **退避**：`403/429` 指数退避（1s→2s→4s，最多 3 次）；网络异常重试 3 次后放弃本轮并记 `error`。
+- 日志是**一行一条 JSON**（`ts/repo/polls/issues/found/emitted/skipped/ratelimit/error`），方便 `grep`/`jq`。
+
+### 14.3 thread 语义（订阅直通靠它）
+
+`thread = <owner>/<repo>#<number>`：
+
+- 同一个 issue / PR 的所有评论天然落在一个 thread 上 → Router 第一次派单后建立订阅，后续评论**直通**给同一个 worker 会话（省一次决策、上下文连续）；
+- 不同 issue 永不共用一个 thread，也就不会出现「跨 thread 合批」（§13.3 的分组规则保证）；
+- PR 与 issue 使用同一套编号空间，`issueNumber` 就是 PR 号，不需要额外映射。
+
+### 14.4 去重与 watermark
+
+- `dedupeKey = gh:<owner>/<repo>#<number>:<commentId>` → 即使重复投递，Fast Path 的 `duplicate-of` 也会挡掉；
+- 本地 state（默认 `.cache/github-poll-state.json`，已在 `.gitignore`）记两类东西：`issues[number] = 已见过的最大 commentId`、`etags[url]`；
+- `extractMentions(comments, { watermarkFor })` 是纯函数：`commentId <= watermark` 直接过滤，所以进程重启也不会重放历史评论；
+- 认领条件：正文命中 `/@dsh-superagent-lab|@superagent/i`；跳过自己（`--self`）与已知 bot（`login` 以 `[bot]` 结尾或在 `--skip-bots` 列表）。
+
+### 14.5 常用参数与常驻
+
+```powershell
+# 单次干跑（不 POST，只统计）
+node scripts/hosting/github-poll.mjs --repo owner/name --dry --since-minutes 1440
+
+# 真跑：投给本机常驻进程
+node scripts/hosting/github-poll.mjs --repo owner/name --port 3082 --interval 60 --since-minutes 120
+
+# 只看 PR review comments（默认关，开了会多打一类接口）
+node scripts/hosting/github-poll.mjs --repo owner/name --review-comments
+```
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `--repo owner/name` | 必填 | 目标仓库 |
+| `--port` | 3082 | 常驻进程面板端口（POST `/api/triggers`） |
+| `--interval` | 60 | 轮询间隔秒（最小 10） |
+| `--once` | false | 只跑一轮 |
+| `--dry` | false | 不 POST，只输出统计 |
+| `--since-minutes` | 60 | 只看这段时间内更新过的 issue |
+| `--max-comments` | 200 | 单轮最多处理的评论数（= 配额上限保护） |
+| `--self` | `GITHUB_SELF` | 自己的 bot login，跳过回声 |
+| `--skip-bots` | `github-actions[bot],dependabot[bot]` | 跳过的 bot 列表 |
+| `--state` | `<cwd>/.cache/github-poll-state.json` | watermark / etag 文件 |
+
+常驻：和 §13.5 的 `start-hosted.ps1` 并列再起一个进程即可（或用 `install-autostart.ps1` 的自启机制再挂一条）。建议给轮询进程单独的重定向日志，便于按 `event` 字段排查。
+
+### 14.6 实测
+
+- `node --test scripts/hosting/github-poll.test.mjs` → 7/7 通过（无网络：API 用 stub fetch 注入）。
+- `node scripts/hosting/github-poll.mjs --repo kohakushigure/dsh-superagent-lab --dry --since-minutes 1440` → `issues=0, found=0, emitted=0, skipped=0, ratelimit.remaining=59, error=null`，退出码 0（该仓库当前无人评论）。
+- 未认证路径已验证；**带 token 的路径 [未实测]**（本机无可用 token）。
+
+---
+
+## 15. 与其它文档的关系
 
 - 官方机制与仓库细节：`docs/01`、`docs/02`（以 `docs/06` 的事实核查为准）。
 - 官方原型的 Windows 部署链路与卡点：`docs/03`。本文的 `local-superagent/` 是那条路走不通时的**替代实现（B 方案）**。

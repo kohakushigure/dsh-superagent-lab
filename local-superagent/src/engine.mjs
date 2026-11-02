@@ -104,7 +104,7 @@ export class Engine {
   }
 
   startPanel(port) {
-    if (port) this.cfg.panel.port = port;
+    if (port !== undefined && port !== null) this.cfg.panel.port = port;
     this.panel = createPanel({ engine: this });
     return this.panel.start();
   }

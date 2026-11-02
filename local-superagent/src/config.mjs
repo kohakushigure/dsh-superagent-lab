@@ -1,8 +1,34 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** Package root: <repo>/local-superagent */
 export const BASE_DIR = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+
+/**
+ * 读取 local-superagent/.env.local（KEY=VALUE，已 gitignore）并注入 process.env。
+ * 目的：不管进程是被 start-all、外部 watchdog 还是手动拉起的，模型配置都不会丢；
+ * 已存在的环境变量优先，文件只补空缺。
+ */
+function loadEnvFile(dir) {
+  const file = path.join(dir, '.env.local');
+  if (!fs.existsSync(file)) return 0;
+  let n = 0;
+  for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.replace(/^\uFEFF/, '').trim();
+    if (!line || line.startsWith('#')) continue;
+    const i = line.indexOf('=');
+    if (i <= 0) continue;
+    const k = line.slice(0, i).trim();
+    const v = line.slice(i + 1).trim();
+    if (!k || process.env[k]) continue; // 空字符串也当作未设置，避免被上层空环境变量挡住
+    process.env[k] = v;
+    n += 1;
+  }
+  return n;
+}
+
+loadEnvFile(BASE_DIR);
 
 function int(v, d) {
   const n = Number.parseInt(v == null ? '' : v, 10);
@@ -115,7 +141,14 @@ export function loadConfig(env, overrides) {
     },
     panel: {
       host: e.PANEL_HOST || '127.0.0.1',
-      port: int(e.PANEL_PORT, 3082)
+      port: int(e.PANEL_PORT, 3082),
+      // 设置后，所有写操作（POST /api/*）必须带 x-auth-token 或 Authorization: Bearer；不设则沿用“仅本机可写”的默认
+      authToken: e.SUPERAGENT_AUTH_TOKEN || ''
+    },
+    retention: {
+      // 事件/消息/跳转/outbox 的保留天数；0 = 不清理。任务与会话永不删除。
+      days: int(e.RETENTION_DAYS, 14),
+      intervalMs: int(e.RETENTION_INTERVAL_MS, 3600000)
     },
     passthrough: { enabled: bool(e.PASSTHROUGH_ENABLED, true) },
     logLevel: e.LOG_LEVEL || 'info'

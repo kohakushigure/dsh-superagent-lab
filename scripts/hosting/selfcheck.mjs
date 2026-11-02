@@ -17,6 +17,8 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, cur, i, arr) 
 const PORT = Number(args.port || 3082);
 const DRY = Boolean(args.dry);
 const INTERVAL = Number(args.interval || 0);
+const AUTH = args.token || process.env.SUPERAGENT_AUTH_TOKEN || '';
+const authHeaders = AUTH ? { 'x-auth-token': AUTH } : {};
 const ROOT = path.resolve(new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 const DOCS = path.join(ROOT, 'docs');
 const SA = path.join(ROOT, 'local-superagent');
@@ -91,7 +93,7 @@ async function emitAll() {
   for (const ev of events) {
     const res = await fetch('http://127.0.0.1:' + PORT + '/api/triggers', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: Object.assign({ 'content-type': 'application/json' }, authHeaders),
       body: JSON.stringify({ text: ev.text, thread: ev.thread, source: 'http', author: 'selfcheck' })
     });
     const body = await res.json().catch(() => ({}));

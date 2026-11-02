@@ -6,12 +6,12 @@ import { Engine } from '../src/engine.mjs';
 import { Toolbox } from '../src/tools.mjs';
 import { makeEngine, cleanup, testCfg, tmpDir } from '../testkit/helpers.mjs';
 
-const freePort = () => 20000 + Math.floor(Math.random() * 20000);
+// 面板支持 listen(0)：让内核分配端口，避免并行跑测试时的 EADDRINUSE（旧实现用随机高位端口会偶发碰撞）
 
 test('H1 POST /api/triggers feeds the resident engine (received counter grows)', async () => {
   const { engine, dir } = await makeEngine('host-ingest', { filter: { batchWindowMs: 0 } });
   try {
-    const url = await engine.startPanel(freePort());
+    const url = await engine.startPanel(0);
     assert.equal(engine.router.counters.received, 0);
     const res = await fetch(url + '/api/triggers', {
       method: 'POST',

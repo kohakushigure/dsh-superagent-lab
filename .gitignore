@@ -26,3 +26,14 @@ local-superagent/evidence/*.jsonl
 # ---- scratch ----
 _smoke*
 *.tmp
+.cache/
+# ---- secrets (never commit) ----
+deepseekkey.txt
+*.key
+.env
+.env.local
+local-superagent/.env.local
+.cache/
+projects/
+research/raw/
+agent-out/*.log

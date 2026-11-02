@@ -111,8 +111,21 @@ export function createPanel(opts) {
     ].join('\n');
   }
 
+  /** 写操作鉴权：设了 SUPERAGENT_AUTH_TOKEN 才生效；未设时保持“仅本机可写”的默认行为。 */
+  function authorized(req) {
+    const want = cfg.panel && cfg.panel.authToken;
+    if (!want) return true;
+    const header = req.headers['x-auth-token'] || '';
+    const auth = String(req.headers.authorization || '');
+    const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+    return header === want || bearer === want;
+  }
+
   async function handler(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
+    if (req.method === 'POST' && url.pathname.startsWith('/api/') && !authorized(req)) {
+      return json(res, 401, { ok: false, error: 'unauthorized: send x-auth-token or Authorization: Bearer' });
+    }
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(page());
@@ -186,9 +199,11 @@ export function createPanel(opts) {
     return json(res, 404, { ok: false, error: 'not found' });
   }
 
+  let pruneTimer = null;
+
   return {
     async start(port) {
-      const p = port || cfg.panel.port;
+      const p = port === undefined || port === null ? cfg.panel.port : port;
       server = http.createServer((req, res) => {
         handler(req, res).catch((err) => json(res, 500, { ok: false, error: String(err && err.message) }));
       });
@@ -199,9 +214,27 @@ export function createPanel(opts) {
       const addr = server.address();
       const url = 'http://' + cfg.panel.host + ':' + addr.port;
       engine.logger.info('panel.listening', { url });
+      // 保留策略：每小时清一次“已终结的触发器 + 纯日志类表”，任务/会话/订阅不动
+      const days = (cfg.retention && cfg.retention.days) || 0;
+      if (days > 0) {
+        const tick = () => {
+          try {
+            const cutoff = Date.now() - days * 86400000;
+            const out = repo.pruneBefore(cutoff);
+            const total = Object.entries(out).filter(([k]) => k !== 'cutoffMs').reduce((s, [, v]) => s + v, 0);
+            if (total > 0) repo.event({ kind: 'retention_prune', actor: 'system', detail: Object.assign({ days }, out) });
+          } catch (err) {
+            engine.logger.warn('retention.failed', { error: String(err && err.message) });
+          }
+        };
+        tick();
+        pruneTimer = setInterval(tick, (cfg.retention && cfg.retention.intervalMs) || 3600000);
+        if (pruneTimer.unref) pruneTimer.unref();
+      }
       return url;
     },
     async stop() {
+      if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
       if (!server) return;
       await new Promise((resolve) => server.close(() => resolve()));
       server = null;
