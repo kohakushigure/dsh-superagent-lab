@@ -1,5 +1,7 @@
 # 03 · 本地部署 runbook（Windows 11 实测）
 
+> **[路径说明]** 本文引用的 `deploy/logs/`、`deploy/run/`、`deploy/backup/`、`deploy/state/`、`deploy/dsh-home/`、`deploy/upstream/` 全部是**本地产物，未随仓库分发**（已在 `.gitignore` 里）。每条命令都可原地复跑：上游克隆见 §3.1，profile 与 stateDir 见 §3.4–3.5，启动日志落在 `deploy/run/`（§3.6）。仓库里随代码分发的是脚本与配置模板本身：`deploy/start.ps1`、`deploy/stop.ps1`、`deploy/status.ps1`、`deploy/bin/dsh-local.cmd`、`deploy/profile.cordis.patch.yml`、`deploy/patches/`。
+>
 > 目标：把官方原型 `deepseek-ai/dsh-superagent-prototype` 在本机（Windows 11 26200 / dsh 0.2.1-rc.4）上部署到「可复现」的程度，并把走不通的地方写成可执行的替代路径。
 >
 > **标注约定**（全队统一，只用这三种）：

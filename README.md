@@ -2,10 +2,15 @@
 
 **DeepSeek Super-agent（2026-10-31）研究 + 一个真能跑的本地托管 loop。**
 
+[![CI](https://github.com/kohakushigure/dsh-superagent-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/kohakushigure/dsh-superagent-lab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A524-3c873a)
-![Tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)
-![Probes](https://img.shields.io/badge/independent%20probes-267%2F267-blue)
+![Tests (local)](https://img.shields.io/badge/tests-26%20passing%20%28local%29-brightgreen)
+![Probes (local)](https://img.shields.io/badge/independent%20probes-267%2F267%20%28local%29-blue)
+
+> **徽章口径**：**CI** 是 GitHub Actions 的真实状态（`.github/workflows/ci.yml`，ubuntu + windows 双平台）。
+> **tests / probes** 两个是 shields **静态标注**，数值来自本机实测（`node --test` 26 例 · `scripts/verify.ps1` 探针 267/267），
+> **不随提交更新，也不代表 CI 的结果**——要看当前提交到底绿不绿，只有 CI 徽章算数。
 
 > 目标：完全理解 DeepSeek 在 **2026-10-31** 发布的 Super-agent 方案，并搞清楚"怎么在本机部署一个 superagent"。
 >

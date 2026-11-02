@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The real suite: zero-dependency Node 24 tests + the scripted end-to-end demo.
+  # Both run offline. local-superagent falls back to its deterministic mock brain
+  # whenever OPENAI_API_KEY is empty, so no secret is needed here.
+  # ---------------------------------------------------------------------------
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: local-superagent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Node version
+        shell: bash
+        run: node --version && npm --version
+
+      - name: Unit and integration tests (node --test)
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test 2>&1 | tee test-output.txt
+
+      - name: End-to-end demo (mock brain, 30 assertions)
+        shell: bash
+        run: |
+          set -o pipefail
+          node bin/demo.mjs 2>&1 | tee demo-output.txt
+
+      - name: Upload demo output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-output-${{ matrix.os }}
+          path: |
+            local-superagent/demo-output.txt
+            local-superagent/test-output.txt
+            local-superagent/evidence/demo-run.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Boot the service for real and prove one HTTP trigger becomes a task.
+  # PowerShell is used on both runners so the exact same script runs everywhere
+  # (ubuntu-latest ships pwsh; on Windows it is the native shell).
+  # Uncommon port 18082 avoids clashes with anything the runner may hold.
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: python-free smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: local-superagent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Start service, submit one trigger, assert a task exists
+        shell: pwsh
+        env:
+          PANEL_PORT: '18082'
+          OPENAI_API_KEY: ''
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $port = 18082
+          $base = "http://127.0.0.1:$port"
+          $stateDir = Join-Path $env:RUNNER_TEMP 'smoke-state'
+          $env:SUPERAGENT_STATE_DIR = $stateDir
+          $env:PANEL_PORT = "$port"
+
+          Write-Host "node: $(node --version)"
+
+          $out = Join-Path $env:RUNNER_TEMP 'smoke-agent.out.log'
+          $err = Join-Path $env:RUNNER_TEMP 'smoke-agent.err.log'
+          $proc = Start-Process -FilePath 'node' -ArgumentList @('bin/superagent.mjs','start','--port',"$port") -PassThru -WorkingDirectory (Get-Location).Path -RedirectStandardOutput $out -RedirectStandardError $err
+          Write-Host "agent pid $($proc.Id), log $out"
+
+          $deadline = (Get-Date).AddSeconds(60)
+          $up = $false
+          while ((Get-Date) -lt $deadline) {
+            try { $h = Invoke-RestMethod -Uri "$base/api/health" -TimeoutSec 3 -ErrorAction Stop; $up = $true; break }
+            catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $up) {
+            Write-Host '--- stdout ---'; if (Test-Path $out) { Get-Content $out }
+            Write-Host '--- stderr ---'; if (Test-Path $err) { Get-Content $err }
+            throw 'service did not answer /api/health within 60s'
+          }
+          Write-Host "health: ok, llm mode = $($h.llm)"
+
+          $body = @{ text = '@superagent ci smoke: write the deliverable'; source = 'http'; thread = 'thread_ci_smoke'; author = 'ci' } | ConvertTo-Json -Compress
+          $submit = Invoke-RestMethod -Uri "$base/api/triggers" -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 15
+          Write-Host "trigger: $($submit | ConvertTo-Json -Compress)"
+          if (-not $submit.ok) { throw 'trigger was not accepted' }
+
+          $deadline = (Get-Date).AddSeconds(90)
+          $total = 0
+          $done = 0
+          $state = $null
+          while ((Get-Date) -lt $deadline) {
+            $state = Invoke-RestMethod -Uri "$base/api/state" -TimeoutSec 5
+            $total = 0; $done = 0
+            foreach ($row in @($state.metrics.tasks)) {
+              $total += [int]$row.n
+              if ($row.status -eq 'done') { $done += [int]$row.n }
+            }
+            if ($total -ge 1 -and $done -ge 1 -and [int]$state.concurrency.inflight -eq 0) { break }
+            Start-Sleep -Milliseconds 250
+          }
+
+          Write-Host "tasks total=$total done=$done inflight=$($state.concurrency.inflight)"
+          Write-Host ($state.metrics.tasks | ConvertTo-Json -Compress)
+
+          try { Invoke-RestMethod -Uri "$base/api/stop" -Method Post -TimeoutSec 5 | Out-Null } catch { }
+          $wait = (Get-Date).AddSeconds(20)
+          while (-not $proc.HasExited -and (Get-Date) -lt $wait) { Start-Sleep -Milliseconds 200; $proc.Refresh() }
+          if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+
+          if ($total -lt 1) { throw "ASSERT FAILED: expected tasks >= 1, got $total" }
+          if ($done -lt 1) { throw "ASSERT FAILED: expected at least one done task, got $done" }
+          Write-Host 'SMOKE OK: 1 trigger -> 1 task -> done'
+
+      - name: Upload smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/smoke-agent.out.log
+            ${{ runner.temp }}/smoke-agent.err.log
+            ${{ runner.temp }}/smoke-state/**
+          if-no-files-found: warn
+          retention-days: 7

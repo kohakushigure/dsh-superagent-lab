@@ -6,6 +6,17 @@
 > 复跑入口：`scripts/verify.ps1` → 本轮 **RESULT: PASS，退出码 0**
 > 写入范围：`scripts/`、`docs/05-`、`verify-out/`。**未修改** `local-superagent/` 内任何文件，原目录仅作只读对照。
 
+> **[路径说明]** 本文所有 `verify-out/…`、`local-superagent/evidence/…`、`verify-tmp/…` 引用都是**本地产物，未随仓库分发**（`verify-out/` 在 `.gitignore` 中，证据日志与状态库都不进仓库）。下面每一条都可原地复现，不是死链：
+>
+> | 想复现 | 命令 |
+> | --- | --- |
+> | 全量验收（测试 + demo + 全部探针 → `RESULT: PASS`） | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1` |
+> | 只跑单元/集成测试 | `cd local-superagent; node --test` |
+> | 只跑 30 条断言的端到端 demo | `cd local-superagent; node bin/demo.mjs` |
+> | 只跑某一组探针 | `node scripts\probes\run-all.mjs verify-out\clean-<ts> verify-out --only=H1,H2` |
+>
+> 跑完会在 `verify-out/` 下重新生成 `verify-<ts>.log` 与 `probes-<iso>.json`；文件名带时间戳，所以本文引用的是**当时那一轮**的名字，重跑后名字会变。CI 侧的等价验证见 `.github/workflows/ci.yml`。
+
 ---
 
 ## 0. 结论摘要
