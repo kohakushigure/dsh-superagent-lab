@@ -134,7 +134,7 @@ export function loadConfig(env, overrides) {
     },
     watchdog: {
       intervalMs: int(e.WATCHDOG_INTERVAL_MS, 1500),
-      stallMs: int(e.WATCHDOG_STALL_MS, 15000),
+      stallMs: int(e.WATCHDOG_STALL_MS, 120000),   // 真模型一次推理可能 10–30s，15s 的旧默认会误杀
       loopThreshold: int(e.WATCHDOG_LOOP_THRESHOLD, 3),
       errorThreshold: int(e.WATCHDOG_ERROR_THRESHOLD, 2),
       autoRestart: bool(e.WATCHDOG_AUTO_RESTART, true)

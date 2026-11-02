@@ -88,3 +88,47 @@
 1. 补推 3 个提交（换网络或等代理恢复），让 CI 验证这一轮代码。
 2. 桌面入口：`SuperAgent.cmd` / 打包 exe（约束：产物全部留在本仓库目录）。
 3. GitHub source 端到端：在本仓库开 issue → @ 自己 → 工单 → 交付物，跑通整链。
+## 第 4 轮（00:05–00:35，goal round 1–2）
+
+### 补的缺口
+
+| 缺口 | 做法 | 验证 |
+| --- | --- | --- |
+| 没有桌面入口 | `tools/launcher/SuperAgent.cs` → 编译成 7 KB 的 `SuperAgent.exe`（csc，无需网络）；`SuperAgent.cmd` 为无 .NET 回退 | `--status` 打出三个 pid；`--no-open` 幂等补齐缺失组件 |
+| 自启只拉 loop | `install-autostart.ps1` 指向 `start-all.ps1` | 计划任务 `Ready`，action 里能看到 `start-all.ps1 -Port 3082` |
+| 受理正则不含本仓库 handle | `DEFAULT_ACCEPT_REGEX` 增加 `@dsh-superagent` | 同一条 `@dsh-superagent-lab ...` 事件从 `dropped/no-mention` 变成 `dispatched` |
+| 待人工堆积 11 条探针 | 面板逐条 reject | `pending 11 → 0` |
+
+### 真模型 + 真 GitHub 线程暴露的三个问题（都修了）
+
+1. **15 秒的 stall 阈值会误杀真模型**：`deepseek-v4-pro` 一次推理 10–30 s，旧默认 15 s 让 watchdog 在模型还在想的时候就把任务判死（`watchdog gave up: stall`，attempt 2）。
+   修：`WATCHDOG_STALL_MS` 默认 15 s → **120 s**，并在每次模型调用前刷新 `progress_at`（心跳）。
+2. **失败任务永远霸占 thread**：任务失败后订阅未关闭，后续事件命中 `passthrough` 被打到一个已经死掉的会话（实测 thread `…#1` 的事件直接进了旧 session）。
+   修：worker 失败路径与 watchdog 放弃路径都 `closeSubscriptionsForTask(taskId)`；成功任务保留订阅（对齐上游「ended ticket keeps its subscriptions」）。
+3. **仓库类任务拿不到仓库上下文**：`PROJECTS` 只映射了 `self/`，真实 GitHub 线程前缀是 `kohakushigure/dsh-superagent-lab#`，于是 workdir 落在 `.work/<id>`，模型 `fs.read docs/10-console.md` 直接 ENOENT。
+   修：`.env.local` 里加 `PROJECTS=self/=…;kohakushigure/dsh-superagent-lab#=…`（该文件 gitignored，需在本机配）。
+
+### 端到端证据（形状级，不是真 issue）
+
+`git push` 与 `gh api` 的写请求仍被本机代理挡住，**没法在本仓库开真 issue**。改用与 `github-poll.mjs` 完全一致的形状投递：
+
+```
+POST /api/triggers { source:"github", thread:"kohakushigure/dsh-superagent-lab#2", author:"kohakushigure",
+                    text:"@dsh-superagent-lab 读 docs/10-console.md …" }
+-> batched -> dispatch -> task_gwnbb85e56352 (project=self)  -> done
+-> agent-out/task_gwnbb85e56352.md:
+   控制台给谁用：给需要观察/调试 superagent 任务的人（开发者、运维）使用。
+   怎么看工单：打开 http://127.0.0.1:3082/ …
+   写操作要什么：写操作需要带 token（Bearer）…
+```
+
+这是真模型、真项目目录、真文件产出；唯一缺的是「真 issue 触发」——卡在推送/写权限。
+
+### 这一轮的数字
+
+| 项 | 值 |
+| --- | --- |
+| 单测 | 30/30 |
+| 桌面入口 | `SuperAgent.exe` 7 KB，`--status/--stop/--no-open` 实测 |
+| 端到端 | github 形状事件 → 工单 → 交付物，`done` |
+| 待推送 | 6 个本地提交（最新 `fcfef72`） |

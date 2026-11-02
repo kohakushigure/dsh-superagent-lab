@@ -145,6 +145,8 @@ export class Worker {
           '',
           'STEP ' + (step + 1) + '/' + this.cfg.worker.maxSteps + ' — answer with one JSON action.'
         ].join('\n');
+        // 心跳：模型调用可能要几十秒，先把 progress_at 顶一下，避免被 stall 误杀
+        this.repo.updateTask(taskId, { progress_at: this.clock() });
         const res = await this.llm.chat({
           model: this.cfg.llm.workerModel,
           json: true,
@@ -212,6 +214,8 @@ export class Worker {
       if (!final) {
         lastError = 'max-steps (' + this.cfg.worker.maxSteps + ') reached without a final answer';
         this.repo.updateTask(taskId, { status: 'failed', error: lastError, progress_at: this.clock() });
+    // 失败的任务不再霸占 thread：关掉它的订阅，后续事件重新走 Router（否则 passthrough 会打到死会话上）
+    this.repo.closeSubscriptionsForTask(taskId);
         this.repo.event({ kind: 'task_failed', actor: 'worker', taskId, detail: { reason: 'max-steps', steps: step } });
         this.counters.failures += 1;
         return { taskId, status: 'failed', error: lastError, steps: step, tools: toolbox.stats() };
@@ -250,6 +254,7 @@ export class Worker {
       this.counters.failures += 1;
       const msg = String(err && err.message ? err.message : err);
       this.repo.updateTask(taskId, { status: 'failed', error: truncate(msg, 500), progress_at: this.clock() });
+      this.repo.closeSubscriptionsForTask(taskId);
       this.repo.event({ kind: 'llm_error', actor: 'worker', taskId, detail: { error: truncate(msg, 400) } });
       this.repo.event({ kind: 'task_failed', actor: 'worker', taskId, detail: { error: truncate(msg, 400) } });
       if (this.logger) this.logger.error('worker.task_failed', { taskId, error: msg });

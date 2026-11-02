@@ -57,6 +57,8 @@ export class Watchdog {
         if (this.router) this.router.schedule(task.id);
       } else {
         this.repo.updateTask(task.id, { status: 'failed', error: 'watchdog gave up: ' + finding.kind });
+        // 放弃的任务不再持有 thread 订阅，避免后续事件被 passthrough 打到一个已经放弃的会话
+        this.repo.closeSubscriptionsForTask(task.id);
         const batchId = newId('wd');
         this.repo.decide({
           batchId,
