@@ -82,7 +82,8 @@ export function projectRule(projects, threadId) {
     base: (rule && rule.base) || null,
     maxSteps: (rule && rule.maxSteps) || null,
     recipe: (rule && rule.recipe) || [],
-    prBranch: (rule && rule.prBranch) || null
+    prBranch: (rule && rule.prBranch) || null,
+    runCwd: (rule && rule.runCwd) || null
   };
 }
 

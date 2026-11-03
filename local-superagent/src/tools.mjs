@@ -17,6 +17,7 @@ export const TOOL_SPEC = [
   { name: 'fs.write', args: { path: 'relative/path.md', content: 'string' }, note: 'write a file inside the task workdir' },
   { name: 'fs.read', args: { path: 'relative/path.md' }, note: 'read a file inside the task workdir' },
   { name: 'fs.list', args: { path: '.' }, note: 'list a directory inside the task workdir' },
+  { name: 'fs.replace', args: { path: 'relative/path.py', find: 'old text', replace: 'new text' }, note: 'replace exactly one occurrence inside the workdir (fails when not unique)' },
   { name: 'shell', args: { command: 'git status --porcelain' }, note: 'allowlisted read-only commands only' },
   { name: 'git', args: { subcommand: 'status' }, note: 'git status|diff|log|rev-parse|branch' },
   { name: 'run', args: { command: 'python -m pytest -q' }, note: 'run one command from the project allowlist (timeout enforced)' },
@@ -91,6 +92,8 @@ export class Toolbox {
     this.cfg = o.cfg;
     this.shell = o.shell || (process.platform === 'win32' ? shells.win() : '/bin/sh');
     this.rule = o.rule || null;
+    // 有些仓库的测试入口在子目录（如 patent-tool/），规则里可以指定 runCwd
+    this.runCwd = this.rule && this.rule.runCwd ? path.resolve(this.workdir, this.rule.runCwd) : this.workdir;
     this.clock = o.clock || (() => Date.now());
     this.calls = 0;
     this.denied = 0;
@@ -103,6 +106,7 @@ export class Toolbox {
       if (name === 'fs.write') return await this.write(args || {});
       if (name === 'fs.read') return await this.read(args || {});
       if (name === 'fs.list') return await this.list(args || {});
+      if (name === 'fs.replace') return await this.replace(args || {});
       if (name === 'shell') return await this.shellCall(args || {}, signal);
       if (name === 'git') return await this.git(args || {});
       if (name === 'run') return await this.runCommand(args || {}, opts);
@@ -154,7 +158,7 @@ export class Toolbox {
       };
     }
     const res = await run(this.shell, ['-NoProfile', '-NonInteractive', '-Command', command], {
-      cwd: this.workdir,
+      cwd: this.runCwd,
       timeout: this.cfg.worker.shellTimeoutMs,
       signal
     });
@@ -207,6 +211,22 @@ export class Toolbox {
     const argv = raw.split(/\s+/).filter(Boolean);
     const res = await run('gh', argv, { cwd: this.workdir, timeout: 60000, signal });
     return { ok: res.ok, output: 'exit=' + res.code + '\n' + String(res.output).slice(0, MAX_OUT) };
+  }
+
+  /** 精确替换：只允许命中一次，避免“改错地方”。用于大文件里的定点修补（模型不必把全文读进上下文）。 */
+  async replace(args) {
+    const target = inside(this.workdir, args.path);
+    const find = String(args.find == null ? '' : args.find);
+    const repl = String(args.replace == null ? '' : args.replace);
+    if (!find) return { ok: false, denied: false, output: 'fs.replace needs a non-empty find' };
+    const before = fs.readFileSync(target, 'utf8');
+    const count = before.split(find).length - 1;
+    if (count === 0) return { ok: false, denied: false, output: 'find text not present' };
+    if (count > 1) return { ok: false, denied: false, output: 'find text is not unique (' + count + ' matches)' };
+    const after = before.replace(find, repl);
+    fs.writeFileSync(target, after, 'utf8');
+    const rel = path.relative(this.workdir, target) || '.';
+    return { ok: true, output: 'replaced 1 occurrence in ' + rel + ' (' + before.length + ' -> ' + after.length + ' chars)' };
   }
 
   stats() {

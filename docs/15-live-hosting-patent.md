@@ -78,3 +78,27 @@ issue 评论（@dsh-superagent-lab）
 | 6 | worker 的 `git push` 失败：`Failed to connect to 127.0.0.1:7078` | 全局 `git config http.proxy` 指向的代理已下线 | 清掉全局代理（直连 2.1s），重试后 push 成功 |
 
 这两条都不是理论问题：一条是“守卫写窄了”，一条是“环境依赖悄悄死了”。loop 每跑一轮就把这类问题挤出来一个。
+## 8. 第一个真代码任务：#35 失败项 A → draft PR #48
+
+| 项 | 值 |
+| --- | --- |
+| issue | #35（QA 判定失败，失败项 A：根级 OTA 9 failed） |
+| 分支 | `agent/issue-35-ota-version` |
+| 改动 | `patent-tool/tests/test_ota_acceptance.py`（+7 / −2） |
+| 修法 | 不再硬编码 `1.0.0.27/1.0.0.28`：`CURRENT_TEXT = version_mod.APP_VERSION`，`TARGET_TEXT = _bump_patch(CURRENT_TEXT)` |
+| 验证 | `cd patent-tool && python -m pytest tests/test_ota_acceptance.py -q` → **96 passed, 1 skipped**（修复前 9 failed） |
+| PR | **#48**（draft，base `develop`，由 Channel 开出） |
+| 回写 | 已自动在 #35 留下 PR 链接 + 实跑 + NOT RUN |
+
+## 9. 为跑通它新增的两个能力
+
+| 能力 | 为什么需要 | 实现 |
+| --- | --- | --- |
+| `fs.replace`（精确单次替换） | 65 KB 的测试文件读进上下文会被 spill 截断，模型无法整文件重写 | 只允许命中一次，命中 0 次或多次都报错返回，不做模糊匹配 |
+| 项目级 `runCwd` | 他们的测试入口在 `patent-tool/` 子目录 | 规则里写 `runCwd: "patent-tool"`，`run` 的 cwd 跟着走 |
+
+## 10. 这一轮的环境事故
+
+- 启动脚本被“手写 JSON + 中文”反复写坏（两次），最终改成**用 Node 生成脚本**（`gen-loop-patent.mjs`），彻底消灭转义问题。
+- 全局 `git http.proxy` 指向的代理下线，导致 worker `git push` 失败；已清掉全局代理。
+- 收尾时推送我们自己的仓库遇到 `Connection was reset`（网络抖动），本地提交 `a136f27` 已生成，下一轮重试。
