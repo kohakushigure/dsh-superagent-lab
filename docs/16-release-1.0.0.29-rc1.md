@@ -54,3 +54,30 @@ python build/ota_upload.py --host gitee --dir build/_ota_dist/pkg-1.0.0.29 --tag
 - **没有**把它标成正式版（`prerelease` 保持 true，不晋升 `main`）。
 - **没有**在真机上跑「客户端检查更新 → 下载 → 验签 → 安装 → 回滚」这条端到端链路；这一步需要一台装有旧版的机器。
 - 构建用了 `-SkipTests`（测试已单独跑过：根级 255 passed、OTA 单测全绿）。
+## 6. 正式版推送（v1.0.0.29，稳定通道）
+
+用户要求「直接推 OTA」，于是走了第二次发布：
+
+```
+# 1) 重新按 4 段 tag 生成 payload 并签名（默认就是 v<version>）
+python build/ota_publish.py payload --zip ... --version 1.0.0.29 --out payload.json
+python build/ota_publish.py sign   --payload payload.json --key <private> --out manifest.json
+# 2) 先用 API 建 release（uploader 自己建会 400），再上传
+python build/ota_upload.py --host gitee --dir build/_ota_dist/pkg-1.0.0.29 --tag v1.0.0.29 --commit
+```
+
+| 复核项 | 结果 |
+| --- | --- |
+| `/releases/latest` | `v1.0.0.29`，prerelease=false |
+| manifest | version=1.0.0.29，签名 key_id `patenttool-release-2026` |
+| package_url | `…/download/v1.0.0.29/PatentTool_1.0.0.29_win-x64.zip` |
+| ZIP HEAD | 200，73,986,384 B |
+| 签名校验 | `verify --current-version 1.0.0.28` → ok |
+
+含义：**1.0.0.28 的客户端下次检查更新即可看到 1.0.0.29 并安装**。
+RC 那份（`v1.0.0.29-rc.1`，prerelease=true）保留作历史，自动检查不会推送它。
+
+## 7. 仍需真机确认的一步
+
+客户端侧的完整链路（检查→下载→验签→关窗替换→健康握手→失败回滚）我这边没有真机可跑。
+服务器侧已用与客户端相同的匿名路径验证：latest 指向正确、manifest 可拉、签名可验、ZIP 可下载。
