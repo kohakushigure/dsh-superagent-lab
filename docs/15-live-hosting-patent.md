@@ -102,3 +102,31 @@ issue 评论（@dsh-superagent-lab）
 - 启动脚本被“手写 JSON + 中文”反复写坏（两次），最终改成**用 Node 生成脚本**（`gen-loop-patent.mjs`），彻底消灭转义问题。
 - 全局 `git http.proxy` 指向的代理下线，导致 worker `git push` 失败；已清掉全局代理。
 - 收尾时推送我们自己的仓库遇到 `Connection was reset`（网络抖动），本地提交 `a136f27` 已生成，下一轮重试。
+## 11. 第 3 轮：全量复核 + 收尾
+
+在 `agent/issue-35-ota-version` 上跑**完整根级测试**（不是只跑单文件）：
+
+```
+cd patent-tool && python -m pytest tests -q -p no:cacheprovider
+→ 255 passed, 3 skipped（10.7s）
+```
+
+对照 QA 报告（9 failed / 243 passed / 3 skipped），失败项 A 已消除；PR #48 里已补上这条证据。
+
+顺带核对了 `patent-tool/build/release.ps1`：它现在**已经**把根级 `tests/` 纳入门禁（PR #42 做的），
+所以「release 自测没跑根级用例」这个根因也已闭环，不需要再改。
+
+## 12. 本批交付汇总（3 个 draft PR，全部未合并）
+
+| PR | 分支 | 内容 | 证据 |
+| --- | --- | --- | --- |
+| #45 | `agent/loop-record` | loop 试运行记录（docs） | 1119 tests collected（collect-only） |
+| #47 | `agent/loop-record-2` | Channel 自动回写验证（docs） | 同上 |
+| #48 | `agent/issue-35-ota-version` | 修 #35 失败项 A：版本从 APP_VERSION 推导 | **255 passed / 3 skipped** |
+
+基线核对：`origin/develop` 仍是 `574d29b`，`main` 未被我们触碰；三个分支都只含各自改动；没有任何合并动作。
+
+## 13. 这套托管现在能做什么（一句话）
+
+给它一条提到 `@dsh-superagent-lab` 的 issue 评论，它会在**自己的分支**上改代码、跑**项目自己的**测试、提交推送，
+由 Router 开 **draft PR** 并回写 issue；Worker 全程没有对外发言权，也没有合并权限。
