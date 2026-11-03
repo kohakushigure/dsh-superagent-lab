@@ -19,7 +19,8 @@ deploy/upstream/
 verify-out/
 local-superagent/evidence/hosting/state*/
 local-superagent/evidence/hosting/*.log
-local-superagent/evidence/hosting/*.jsonl
+local-superagent/evidence/hosting/*.json
+local-superagent/evidence/hosting/*.csvl
 local-superagent/evidence/hosting/*.json
 local-superagent/evidence/*.jsonl
 
