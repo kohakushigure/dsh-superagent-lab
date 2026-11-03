@@ -189,7 +189,10 @@ export class Toolbox {
       timeout: (this.cfg.worker && this.cfg.worker.runTimeoutMs) || 120000,
       signal
     });
-    return { ok: res.ok, output: 'exit=' + res.code + '\n' + String(res.output).slice(0, MAX_OUT) };
+    // run 的输出截到 1800 字符，只保留尾部——pytest 列表类输出头部没有信息量
+    const text = String(res.output);
+    const tail = text.length > 1800 ? '…' + text.slice(-1800) : text;
+    return { ok: res.ok, output: 'exit=' + res.code + '\n' + tail };
   }
 
   /** 受限于项目白名单的 gh 调用（只读 + 评论/开 PR；合并与发版不在白名单里）。 */

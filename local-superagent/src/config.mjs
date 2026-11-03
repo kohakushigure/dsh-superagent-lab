@@ -78,7 +78,11 @@ export function projectRule(projects, threadId) {
     outDir: (rule && rule.outDir) || null,
     run: (rule && rule.run) || [],
     gh: (rule && rule.gh) || [],
-    channel: (rule && rule.channel) || null
+    channel: (rule && rule.channel) || null,
+    base: (rule && rule.base) || null,
+    maxSteps: (rule && rule.maxSteps) || null,
+    recipe: (rule && rule.recipe) || [],
+    prBranch: (rule && rule.prBranch) || null
   };
 }
 

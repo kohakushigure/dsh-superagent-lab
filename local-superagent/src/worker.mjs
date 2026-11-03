@@ -161,6 +161,7 @@ export class Worker {
     this.repo.event({ kind: 'task_start', actor: 'worker', taskId, threadId: task0.thread_id, detail: { sessionId: session.id, attempt: task0.attempt, workdir } });
 
     const rule = projectRule(this.cfg.projects, task0.thread_id);
+    const maxSteps = (rule && rule.maxSteps) || this.cfg.worker.maxSteps;
     const toolbox = new Toolbox({ workdir, cfg: this.cfg, clock: this.clock, rule });
     let step = 0;
     let final = null;
@@ -169,7 +170,7 @@ export class Worker {
     const history = [];       // 本轮已经做过的调用摘要，进 prompt，避免上下文被截断后模型失忆
 
     try {
-      while (step < this.cfg.worker.maxSteps) {
+      while (step < maxSteps) {
         if (this.stale(taskId, runAttempt, signal)) return this.finishStale(taskId, runAttempt, signal, 'before-step');
         const contextBlock = this.ctx.inline(session.id, { budget: 5000 });
         const prompt = [
@@ -180,6 +181,7 @@ export class Worker {
           'REQUEST: ' + truncate(task0.intent || task0.title || '', 1200),
           this.skillsBlock(workdir) ? 'PROJECT SKILLS (follow them; they override your defaults):\n' + this.skillsBlock(workdir) : 'PROJECT SKILLS: (none)',
           rule ? 'PROJECT RULES: outDir=' + (rule.outDir || '(default agent-out)') + '; run allowlist=' + JSON.stringify(rule.run) + '; gh allowlist=' + JSON.stringify(rule.gh) : 'PROJECT RULES: (none)',
+          (rule && rule.recipe && rule.recipe.length) ? 'WORKFLOW (follow in order, one action per step):\n' + rule.recipe.map((s, i) => (i + 1) + '. ' + s).join('\n') : '',
           'REPORT FIELDS (use them in final): summary, deliverable, changes[], refs[], ran[], notRun[], blockers[]',
           '',
           'CONTEXT (this worker session only, spilled entries show a resume id):',
@@ -187,7 +189,7 @@ export class Worker {
           '',
           history.length ? 'ALREADY DONE THIS RUN (do not repeat):\n' + history.slice(-8).join('\n') : 'ALREADY DONE THIS RUN: (nothing yet)',
           '',
-          'STEP ' + (step + 1) + '/' + this.cfg.worker.maxSteps + ' — answer with one JSON action.'
+          'STEP ' + (step + 1) + '/' + maxSteps + ' — answer with one JSON action.'
         ].join('\n');
         // 心跳：模型调用可能要几十秒，先把 progress_at 顶一下，避免被 stall 误杀
         this.repo.updateTask(taskId, { progress_at: this.clock() });
@@ -280,6 +282,8 @@ export class Worker {
       this.repo.updateTask(taskId, {
         status: 'done',
         summary: truncate(final.summary || '', 2000),
+        // 结构化报告落库：Channel 回写要用 branch/changes/ran/notRun
+        report: truncate(JSON.stringify(final), 4000),
         deliverable,
         progress_at: this.clock()
       });

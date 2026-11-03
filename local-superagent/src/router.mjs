@@ -281,6 +281,15 @@ export class Router {
   /** Queue a task. At most `worker.maxConcurrency` workers run at once; the rest wait. */
   /** Channel 回写：项目规则里配了 channel=github 且 thread 形如 owner/repo#N 时，把结论贴回原对话。 */
   async deliver(taskId, result) {
+    try {
+      return await this.deliverOnce(taskId, result);
+    } catch (err) {
+      this.repo.event({ kind: 'channel_error', actor: 'router', taskId, detail: { error: String(err && err.message).slice(0, 300) } });
+      return null;
+    }
+  }
+
+  async deliverOnce(taskId, result) {
     const task = this.repo.getTask(taskId);
     if (!task || !task.thread_id) return null;
     const rule = projectRule(this.cfg.projects, task.thread_id);
@@ -289,17 +298,18 @@ export class Router {
     if (!t) return null;
     const report = task.report ? safeJson(task.report) : (result && result.report) || {};
     const dryRun = Boolean(this.cfg.channel && this.cfg.channel.dryRun);
-    if (rule.channel === 'github-pr' && report.branch) {
+    const head = report.branch || rule.prBranch;
+    if (rule.channel === 'github-pr' && head) {
       const body = formatPrBody(task, report, t.number);
       const res = await createPullRequest({
         repo: t.repo,
-        head: report.branch,
+        head,
         base: rule.base || 'main',
         title: (report.prTitle || task.title || 'agent: changes').slice(0, 120),
         body,
         dryRun
       });
-      this.repo.event({ kind: res.ok ? 'pr_opened' : 'pr_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { dryRun, head: report.branch, output: res.output } });
+      this.repo.event({ kind: res.ok ? 'pr_opened' : 'pr_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { dryRun, head, output: res.output } });
       return res;
     }
     const body = formatReport(task, report);
@@ -330,6 +340,10 @@ export class Router {
       return { taskId, status: 'failed' };
     });
     this.runs.add(p);
+    // Channel 回写：任务结束后由 Router 统一对外（Worker 自己没有这个权限）。
+    const d = p.then((res) => this.deliver(taskId, res)).catch(() => {});
+    this.deliveries.add(d);
+    d.finally(() => this.deliveries.delete(d));
     p.then(() => {
       this.inflight.delete(taskId);
       this.runs.delete(p);
