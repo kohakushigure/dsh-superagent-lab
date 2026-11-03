@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+const base = 'G:/Agent-workspace/dsh-superagent/dist/live/patent/';
+const vp = base + 'patent-tool/backend/app/version.py';
+let s = fs.readFileSync(vp, 'utf8');
+s = s.replace('APP_VERSION = "1.0.0.27"', 'APP_VERSION = "1.0.0.29"');
+s = s.replace('APP_RELEASE_DATE = "2026-10-27"', 'APP_RELEASE_DATE = "2026-11-03"');
+fs.writeFileSync(vp, s);
+const vi = base + 'patent-tool/build/version_info.txt';
+let v = fs.readFileSync(vi, 'utf8');
+v = v.replace('filevers=(1, 0, 0, 27)', 'filevers=(1, 0, 0, 29)');
+v = v.replace('prodvers=(1, 0, 0, 27)', 'prodvers=(1, 0, 0, 29)');
+v = v.split('1.0.0.27').join('1.0.0.29');
+fs.writeFileSync(vi, v);
+const check = fs.readFileSync(vp, 'utf8').split('\n').filter((l) => l.includes('APP_VERSION') || l.includes('APP_RELEASE_DATE'));
+console.log(check.join(' | '));
+console.log('version_info has 29:', /1\.0\.0\.29/.test(fs.readFileSync(vi, 'utf8')));
