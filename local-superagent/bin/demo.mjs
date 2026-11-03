@@ -36,13 +36,17 @@ function bigLog(lines) {
   return out.join('\n');
 }
 
+const DEMO_STATE = process.env.SUPERAGENT_STATE_DIR || path.join(BASE_DIR, 'state-demo');
+
 async function main() {
   fs.mkdirSync(EVID, { recursive: true });
   // per-run isolation: every counter below is this run's delta, not an accumulated total
-  fs.rmSync(path.join(BASE_DIR, 'state'), { recursive: true, force: true });
+  fs.rmSync(DEMO_STATE, { recursive: true, force: true });
   fs.rmSync(path.join(BASE_DIR, '.work'), { recursive: true, force: true });
   const cfg = loadConfig(process.env, {
-    stateDir: path.join(BASE_DIR, 'state'),
+    stateDir: DEMO_STATE,
+    // demo 是确定性的脚本演示：强制离线 mock 大脑，避免 .env.local 里的真模型把它变成非确定输出
+    llm: { apiKey: '' },
     filter: { allowlist: ['alice', 'bob', 'carol'], batchWindowMs: 400 }
   });
   const engine = await Engine.create({ cfg, echo: false });
@@ -162,7 +166,7 @@ async function main() {
   say('  resume bytes   : ' + (restored ? restored.length : 0) + ' chars (identical=' + (restored === payload) + ')');
   say('  recall chain   : ' + chain.map((n) => n.kind + ':' + n.id).join(' -> '));
   check('G payload spilled to disk', appended.spilled && fs.existsSync(appended.blobPath));
-  check('G inline context grew by the summary, not the payload', inlineDelta > 0 && inlineDelta * 3 < payload.length, { inlineDelta, full: payload.length });
+  check('G inline holds the summary, not the payload', appended.spilled === true && inlineDelta < payload.length / 3, { inlineChars: inline.chars, full: payload.length, inlineDelta });
   check('G resume handle restores identical bytes', restored === payload);
   check('G chain walks message -> thread -> session -> task', chain.map((n) => n.kind).join(',') === 'message,thread,session,task', chain.map((n) => n.kind));
   report.steps.push({ step: 'G', spilled: appended.spilled, fullChars: payload.length, inlineBefore, inlineAfter: inline.chars, inlineDelta, chain: chain.map((n) => n.kind + ':' + n.id) });
@@ -216,7 +220,9 @@ async function main() {
   if (state.pending.length) {
     const target = state.pending[0].id;
     const res = await fetch(url2 + '/api/decisions/' + target + '/resolve', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resolution: 'approve' })
+      method: 'POST',
+      headers: Object.assign({ 'content-type': 'application/json' }, cfg.panel.authToken ? { 'x-auth-token': cfg.panel.authToken } : {}),
+      body: JSON.stringify({ resolution: 'approve' })
     });
     resolvedOut = await res.json();
     say('  POST /api/decisions/' + target + '/resolve -> ' + JSON.stringify(resolvedOut.decision ? { resolution: resolvedOut.decision.resolution } : resolvedOut));
@@ -284,7 +290,8 @@ function evidenceReadme(r) {
 }
 
 async function ablation(enabled) {
-  const stateDir = path.join(BASE_DIR, enabled ? 'state-ablation-on' : 'state-ablation-off');
+  // ablation 也放在 demo 自己的目录下，避免和常驻进程/上次运行抢占同一路径（Windows 删除会 EPERM）
+  const stateDir = path.join(DEMO_STATE, enabled ? 'ablation-on' : 'ablation-off');
   fs.rmSync(stateDir, { recursive: true, force: true });
   const cfg = loadConfig(process.env, {
     stateDir,

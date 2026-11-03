@@ -2,7 +2,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { newId } from './db.mjs';
 import { cleanTitle } from './mock.mjs';
-import { projectForThread } from './config.mjs';
+import { projectForThread, projectRule } from './config.mjs';
+import { parseThread, formatReport, postIssueComment } from './channel.mjs';
+
+function safeJson(v) { try { return JSON.parse(v); } catch { return {}; } }
 import { truncate } from './log.mjs';
 
 export function sha(s) {
@@ -275,6 +278,21 @@ export class Router {
   }
 
   /** Queue a task. At most `worker.maxConcurrency` workers run at once; the rest wait. */
+  /** Channel 回写：项目规则里配了 channel=github 且 thread 形如 owner/repo#N 时，把结论贴回原对话。 */
+  async deliver(taskId, result) {
+    const task = this.repo.getTask(taskId);
+    if (!task || !task.thread_id) return null;
+    const rule = projectRule(this.cfg.projects, task.thread_id);
+    if (!rule || rule.channel !== 'github') return null;
+    const t = parseThread(task.thread_id);
+    if (!t) return null;
+    const body = formatReport(task, task.report ? safeJson(task.report) : (result && result.report) || {});
+    const dryRun = Boolean(this.cfg.channel && this.cfg.channel.dryRun);
+    const res = await postIssueComment({ repo: t.repo, number: t.number, body, dryRun });
+    this.repo.event({ kind: res.ok ? 'channel_posted' : 'channel_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { dryRun, output: res.output } });
+    return res;
+  }
+
   schedule(taskId) {
     if (this.inflight.size >= this.cap) {
       this.queue.push(taskId);
@@ -316,9 +334,9 @@ export class Router {
 
   /** Project-aware work directory: PROJECTS hit -> the real project dir, else .work/<taskId>. */
   workdirFor(threadId, taskId) {
-    const hit = projectForThread(this.cfg.projects, threadId);
-    if (!hit) return { workdir: path.join(this.cfg.workRoot, taskId), project: null };
-    return { workdir: path.resolve(hit.dir), project: hit.prefix };
+    const rule = projectRule(this.cfg.projects, threadId);
+    if (!rule) return { workdir: path.join(this.cfg.workRoot, taskId), project: null };
+    return { workdir: path.resolve(rule.dir), project: rule.prefix };
   }
 
   /** Bounded global context: recent decisions + live tasks + subscription table. */

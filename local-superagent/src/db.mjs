@@ -43,6 +43,7 @@ export function openDb(dbPath, opts) {
     for (const sql of SCHEMA) db.exec(sql);
     const cols = db.prepare("PRAGMA table_info('tasks')").all().map((r) => r.name);
     if (!cols.includes('project')) db.exec('ALTER TABLE tasks ADD COLUMN project TEXT');
+    if (!cols.includes('report')) db.exec('ALTER TABLE tasks ADD COLUMN report TEXT');
   }
   return db;
 }

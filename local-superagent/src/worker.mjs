@@ -5,6 +5,7 @@ import { Toolbox, TOOL_SPEC } from './tools.mjs';
 import { parseJsonLoose } from './llm.mjs';
 import { mockWorkerStep } from './mock.mjs';
 import { truncate } from './log.mjs';
+import { projectRule } from './config.mjs';
 
 const WORKER_SYSTEM = [
   'You are a worker of a Super-agent. You own exactly one task in one isolated directory.',
@@ -95,8 +96,24 @@ export class Worker {
 
   /** Project hosting gives every task its own file, so parallel tasks in one repo never overwrite. */
   deliverableRel(task) {
-    if (task && task.project) return path.join('agent-out', task.id + '.md');
+    if (task && task.project) {
+      const rule = projectRule(this.cfg.projects, task.thread_id);
+      const outDir = (rule && rule.outDir) || 'agent-out';
+      return path.join(outDir, task.id + '.md');
+    }
     return 'deliverable.md';
+  }
+
+  /** 读项目自带的 .dsh/skills 下的 SKILL.md 注入 worker（对应项目的强制 skill 入口）。 */
+  skillsBlock(workdir) {
+    const base = path.join(workdir, '.dsh', 'skills');
+    if (!fs.existsSync(base)) return '';
+    const out = [];
+    for (const name of fs.readdirSync(base).slice(0, 2)) {
+      const file = path.join(base, name, 'SKILL.md');
+      if (fs.existsSync(file)) out.push('--- SKILL: ' + name + ' ---\n' + truncate(fs.readFileSync(file, 'utf8'), 1500));
+    }
+    return out.join('\n\n');
   }
 
   async run(taskId) {
@@ -124,7 +141,8 @@ export class Worker {
     });
     this.repo.event({ kind: 'task_start', actor: 'worker', taskId, threadId: task0.thread_id, detail: { sessionId: session.id, attempt: task0.attempt, workdir } });
 
-    const toolbox = new Toolbox({ workdir, cfg: this.cfg, clock: this.clock });
+    const rule = projectRule(this.cfg.projects, task0.thread_id);
+    const toolbox = new Toolbox({ workdir, cfg: this.cfg, clock: this.clock, rule });
     let step = 0;
     let final = null;
     let lastError = null;
@@ -141,6 +159,9 @@ export class Worker {
           'WORKDIR: ' + workdir,
           'DELIVERABLE: ' + deliverableRel + ' (write it there, then read it back)',
           'REQUEST: ' + truncate(task0.intent || task0.title || '', 1200),
+          this.skillsBlock(workdir) ? 'PROJECT SKILLS (follow them; they override your defaults):\n' + this.skillsBlock(workdir) : 'PROJECT SKILLS: (none)',
+          rule ? 'PROJECT RULES: outDir=' + (rule.outDir || '(default agent-out)') + '; run allowlist=' + JSON.stringify(rule.run) + '; gh allowlist=' + JSON.stringify(rule.gh) : 'PROJECT RULES: (none)',
+          'REPORT FIELDS (use them in final): summary, deliverable, changes[], refs[], ran[], notRun[], blockers[]',
           '',
           'CONTEXT (this worker session only, spilled entries show a resume id):',
           contextBlock.text || '(empty)',

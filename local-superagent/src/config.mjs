@@ -53,15 +53,33 @@ function parseProjects(v) {
   if (s.startsWith('{')) {
     try {
       const obj = JSON.parse(s);
-      for (const k of Object.keys(obj)) out[String(k)] = String(obj[k]);
+      for (const k of Object.keys(obj)) {
+        const val = obj[k];
+        out[String(k)] = typeof val === 'string' ? { dir: val } : Object.assign({}, val);
+      }
     } catch { /* fall through to the ; form */ }
     return out;
   }
   for (const part of s.split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+    if (i > 0) out[part.slice(0, i).trim()] = { dir: part.slice(i + 1).trim() };
   }
   return out;
+}
+
+/** 把旧的 "字符串目录" 归一化成规则对象，向后兼容。 */
+export function projectRule(projects, threadId) {
+  const hit = projectForThread(projects, threadId);
+  if (!hit) return null;
+  const rule = hit.dir;
+  return {
+    prefix: hit.prefix,
+    dir: typeof rule === 'string' ? rule : rule.dir,
+    outDir: (rule && rule.outDir) || null,
+    run: (rule && rule.run) || [],
+    gh: (rule && rule.gh) || [],
+    channel: (rule && rule.channel) || null
+  };
 }
 
 /** Longest thread-prefix match wins; returns null when no project claims the thread. */
@@ -151,6 +169,13 @@ export function loadConfig(env, overrides) {
       intervalMs: int(e.RETENTION_INTERVAL_MS, 3600000)
     },
     passthrough: { enabled: bool(e.PASSTHROUGH_ENABLED, true) },
+    // 授权模型（对应官方 Mandate/Policy）：谁能提需求、默认受理强度
+    policy: {
+      version: e.POLICY_VERSION || 'v1',
+      allowlist: list(e.POLICY_ALLOWLIST, []),
+      acceptMode: (e.POLICY_ACCEPT_MODE || 'auto').toLowerCase(),
+      selfLogin: e.POLICY_SELF_LOGIN || ''
+    },
     logLevel: e.LOG_LEVEL || 'info'
   };
   return deepMerge(cfg, o);
