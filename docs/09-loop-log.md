@@ -132,3 +132,30 @@ POST /api/triggers { source:"github", thread:"kohakushigure/dsh-superagent-lab#2
 | 桌面入口 | `SuperAgent.exe` 7 KB，`--status/--stop/--no-open` 实测 |
 | 端到端 | github 形状事件 → 工单 → 交付物，`done` |
 | 待推送 | 6 个本地提交（最新 `fcfef72`） |
+## 第 5 轮（08:20–08:35）：真 issue 端到端
+
+推送通道由用户修复（`gh auth login` + `gh auth setup-git`），半小时内完成的事：
+
+| 动作 | 结果 |
+| --- | --- |
+| 补推积压提交 | `9607780..2086c04 main -> main`，7.2 s，无弹窗 |
+| CI 复核 | `9607780` = **completed/success**（匿名 API 查的，不碰凭据） |
+| 真 issue | 建了 [issue #1](https://github.com/kohakushigure/dsh-superagent-lab/issues/1)，评论 `@dsh-superagent-lab` 让它写桌面入口说明 |
+| 摄取 | `github-poll.mjs --once` → `emitted:1`，thread `kohakushigure/dsh-superagent-lab#1`，dedupeKey 用评论 id |
+| 工单 | `task_y04wnc5190641`，`project=kohakushigure/dsh-superagent-lab#`（workdir=仓库根），attempt 1，done，llm calls 28 |
+| 产出 | `agent-out/task_y04wnc5190641.md`，三行中文说明 |
+
+### 但内容有两处幻觉（必须记）
+
+模型写的三行里：
+
+1. 停止命令写成 `SuperAgent.exe stop` —— 实际是 `SuperAgent.exe --stop`；
+2. 构建方式写成 `node scripts/build-desktop.js` —— **仓库里没有这个脚本**，真实构建是 csc 编译 `tools/launcher/SuperAgent.cs`。
+
+链路是真的，内容是错的。已在 `WORKER_SYSTEM` 加三条硬约束：不得编造命令/路径/脚本名；引用逐字；仓库里没有的东西要直说。
+issue #1 已带着这份说明关闭，作为「真环境跑通、内容质量待加强」的记录。
+
+### 还缺的一块：没有回写渠道
+
+现在的 loop 只会把结果写进 `agent-out/`，**不会回到 GitHub 评论里**。官方原型有 Channel（回写 issue/PR），这版没有。
+这次 issue 的结果是我手工评论的，不是 loop 自己发的——这是下一个明确缺口。

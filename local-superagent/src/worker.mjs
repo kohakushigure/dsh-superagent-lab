@@ -20,7 +20,11 @@ const WORKER_SYSTEM = [
   '  - Never call the same tool with the same arguments twice. Repeating a successful call gains nothing.',
   '  - One fs.read is enough to see a file; if it was truncated, read a different path or act on what you have.',
   '  - You have a small step budget. After writing the deliverable and reading it back, answer with final.',
-  '  - If a tool returns an error twice, change approach instead of retrying.'
+  '  - If a tool returns an error twice, change approach instead of retrying.',
+  'Accuracy rules:',
+  '  - Do not invent commands, file paths, flags or script names. If you did not read it or run it, do not write it.',
+  '  - Prefer exact text you have seen in a file; when you summarise, keep the commands verbatim.',
+  '  - If the request asks about something the repository does not contain, say so instead of guessing.'
 ].join('\n');
 
 /**
