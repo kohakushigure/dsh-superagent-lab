@@ -130,3 +130,15 @@ cd patent-tool && python -m pytest tests -q -p no:cacheprovider
 
 给它一条提到 `@dsh-superagent-lab` 的 issue 评论，它会在**自己的分支**上改代码、跑**项目自己的**测试、提交推送，
 由 Router 开 **draft PR** 并回写 issue；Worker 全程没有对外发言权，也没有合并权限。
+## 14. 第 4 轮：#39 复验证据（无代码改动）
+
+在 `develop @ 574d29b` 上只跑测试、不改代码，把结果回写到 #39：
+
+| 命令 | 结果 |
+| --- | --- |
+| `cd patent-tool/backend && python -m pytest tests/unit -k ota -q` | 147 passed（exit 0） |
+| `cd patent-tool && python -m pytest tests/test_ota_acceptance.py tests/test_ota_publishing.py -q` | 102 passed, 2 skipped |
+
+同时如实列出未覆盖项（真实 Gitee 网络、EXE 级安装回滚、前端文案），并说明这不替代 QA 结论。
+
+这条说明一个边界：**不是每个 issue 都要开 PR**。已实现、等验收的 issue，正确的交付物是「可复核的证据」，而不是再造一个分支。
