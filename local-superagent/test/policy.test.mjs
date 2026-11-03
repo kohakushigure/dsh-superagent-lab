@@ -107,3 +107,30 @@ test('pr: body carries changes, ran/NOT RUN and Closes #N; opening is dry-runnab
   assert.equal(dry.dryRun, true);
   assert.match(dry.output, /would open agent\/x -> develop/);
 });
+test('channel: a done task opens a draft PR and writes back to the issue', async () => {
+  const { engine, dir } = await makeEngine('deliver', {
+    projects: { 'acme/repo#': { dir: '__W__', channel: 'github-pr', base: 'develop', prBranch: 'agent/x' } },
+    retention: { days: 0 }
+  });
+  const calls = [];
+  engine.router.channel = {
+    createPullRequest: async (o) => { calls.push({ kind: 'pr', head: o.head, base: o.base, draft: o.draft, body: o.body }); return { ok: true, output: 'https://github.com/acme/repo/pull/7' }; },
+    postIssueComment: async (o) => { calls.push({ kind: 'comment', number: o.number, body: o.body }); return { ok: true, output: 'posted' }; }
+  };
+  try {
+    const now = Date.now();
+    engine.repo.createTask({ id: 'task_d1', title: 'fix x', intent: 'do it', status: 'done', origin: 'router', sessionId: null, threadId: 'acme/repo#12', workdir: dir, triggerIds: [], now });
+    engine.repo.updateTask('task_d1', { report: JSON.stringify({ summary: 's', changes: ['a.py'], ran: ['pytest'], notRun: ['e2e'], branch: 'agent/y' }) });
+    engine.repo.createSession({ id: 'sess_d1', role: 'worker', taskId: 'task_d1', threadId: 'acme/repo#12', model: 'mock', status: 'idle' });
+    const res = await engine.router.deliver('task_d1', { taskId: 'task_d1', status: 'done' });
+    assert.equal(res.ok, true);
+    assert.equal(calls.length, 2, JSON.stringify(calls.map((c) => c.kind)));
+    assert.equal(calls[0].kind, 'pr');
+    assert.equal(calls[0].head, 'agent/y', 'report branch wins over prBranch');
+    assert.equal(calls[0].base, 'develop');
+    assert.match(calls[0].body, /Closes #12/);
+    assert.equal(calls[1].kind, 'comment');
+    assert.match(calls[1].body, /pull\/7/);
+    assert.match(calls[1].body, /NOT RUN/);
+  } finally { await engine.close(); cleanup(dir); }
+});

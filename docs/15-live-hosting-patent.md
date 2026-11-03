@@ -51,3 +51,30 @@ issue 评论（@dsh-superagent-lab）
 2. 选一个真实代码 issue（#39 RC 通道 / #35 发布门禁），在 `agent/<issue>` 分支上产出代码改动 + 跑对应测试；
 3. 每轮都跑 `node --test`（本仓库）与他们的测试入口，结果写进 PR 描述；
 4. 全程 draft PR，不合并，等人工审批。
+## 6. 第二个工单：自动回写跑通（PR #47）
+
+| 项 | 值 |
+| --- | --- |
+| issue | #46 |
+| 分支 | `agent/loop-record-2` |
+| draft PR | **#47**（由 Router 的 Channel 自动开出） |
+| issue 回写 | **自动**：评论里带 PR 链接、分支、改动、实跑、NOT RUN（无需人工补） |
+
+回写内容片段：
+
+```
+## loop 交付
+- draft PR: https://github.com/kohakushigure/llm-patent-batch-generator/pull/47
+- 分支: agent/loop-record-2 → develop
+- 实跑: git switch -c ...; python -m pytest --collect-only -q -> 1119 tests collected; git add -A; git commit ...; git push -u origin agent/loop-record-2
+- NOT RUN: Full test suite (only collection was run, per workflow)
+```
+
+## 7. 这一轮又踩到两个坑
+
+| # | 现象 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 5 | `deliver()` 明明被调用却直接返回 null，PR/评论都没有 | 里有旧守卫 `rule.channel !== "github"`，把 `github-pr` 一并挡掉 | 改成同时接受 `github` / `github-pr`，并补了一条端到端用例（stub Channel，断言「开 PR + 回写评论」两次调用） |
+| 6 | worker 的 `git push` 失败：`Failed to connect to 127.0.0.1:7078` | 全局 `git config http.proxy` 指向的代理已下线 | 清掉全局代理（直连 2.1s），重试后 push 成功 |
+
+这两条都不是理论问题：一条是“守卫写窄了”，一条是“环境依赖悄悄死了”。loop 每跑一轮就把这类问题挤出来一个。

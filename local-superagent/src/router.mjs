@@ -34,6 +34,8 @@ export class Router {
     this.clock = o.clock || (() => Date.now());
     this.runs = new Set();
     this.deliveries = new Set();
+    // Channel 层可注入，便于测试（默认就是真实实现）
+    this.channel = o.channel || { postIssueComment, createPullRequest };
     this.inflight = new Set();
     this.queue = [];
     this.cap = this.cfg.worker.maxConcurrency > 0 ? this.cfg.worker.maxConcurrency : Infinity;
@@ -293,7 +295,7 @@ export class Router {
     const task = this.repo.getTask(taskId);
     if (!task || !task.thread_id) return null;
     const rule = projectRule(this.cfg.projects, task.thread_id);
-    if (!rule || rule.channel !== 'github') return null;
+    if (!rule || (rule.channel !== 'github' && rule.channel !== 'github-pr')) return null;
     const t = parseThread(task.thread_id);
     if (!t) return null;
     const report = task.report ? safeJson(task.report) : (result && result.report) || {};
@@ -301,7 +303,7 @@ export class Router {
     const head = report.branch || rule.prBranch;
     if (rule.channel === 'github-pr' && head) {
       const body = formatPrBody(task, report, t.number);
-      const res = await createPullRequest({
+      const res = await this.channel.createPullRequest({
         repo: t.repo,
         head,
         base: rule.base || 'main',
@@ -310,10 +312,27 @@ export class Router {
         dryRun
       });
       this.repo.event({ kind: res.ok ? 'pr_opened' : 'pr_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { dryRun, head, output: res.output } });
+      // 开完 PR 立刻回写原 issue：URL + 实跑/NOT RUN，避免只在本地留痕
+      if (res.ok) {
+        const url = (String(res.output).match(/https:\/\/[^\s]+\/pull\/\d+/) || [])[0] || '';
+        const note = [
+          '## loop 交付',
+          '',
+          '- draft PR: ' + (url || '(见 Actions 日志)'),
+          '- 分支: ' + head + ' → ' + (rule.base || 'main'),
+          '- 改动: ' + ((report.changes || []).slice(0, 10).join(', ') || '(未报告)'),
+          '- 实跑: ' + ((report.ran || []).join('; ') || '(未报告)'),
+          '- NOT RUN: ' + ((report.notRun || []).join('; ') || '(无)'),
+          '',
+          '_合并需人工审批；Worker 无对外权限，本条由 Router 的 Channel 层发出。_'
+        ].join('\n');
+        const cm = await this.channel.postIssueComment({ repo: t.repo, number: t.number, body: note, dryRun });
+        this.repo.event({ kind: cm.ok ? 'channel_posted' : 'channel_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { after: 'pr', output: cm.output } });
+      }
       return res;
     }
     const body = formatReport(task, report);
-    const res = await postIssueComment({ repo: t.repo, number: t.number, body, dryRun });
+    const res = await this.channel.postIssueComment({ repo: t.repo, number: t.number, body, dryRun });
     this.repo.event({ kind: res.ok ? 'channel_posted' : 'channel_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { dryRun, output: res.output } });
     return res;
   }
