@@ -96,3 +96,35 @@ checks 6, failed 0
 - `node --test`：**38/38**
 - `node bin/demo.mjs`：**30/30**，exit 0
 - 交付物、回写、PR 模板、skill 预算都有专门用例
+## 8. 第三轮：全链路演练 15/15（issue → 分支 → 改动 → 测试 → 提交 → PR）
+
+`scripts/hosting/rehearse-chain.mjs`：在**本地克隆**（`dist/rehearse/patent`）上跑完整链路，远端是一个本地裸仓库
+（`dist/rehearse/remote.git`），**不碰 GitHub 上的任何真实仓库**。
+
+```
+PASS issue context captured
+PASS branch created            :: Switched to a new branch agent/rmw01nbrh
+PASS file written inside project outDir :: docs/records/rehearse-rmw01nbrh/note.md
+PASS write outside workdir denied
+PASS allowed test entrypoint runs :: exit=0 / pytest 9.1.1
+PASS full test run stays denied   :: command not in project allowlist: python -m pytest -q
+PASS staged
+PASS committed                :: [agent/rmw01nbrh 295187e] chore(agent): rehearsal
+PASS commit exists on branch
+PASS pushed to rehearsal remote
+PASS bare remote received the branch :: agent/rmw01nbrh@295187e
+PASS PR body has Closes and NOT RUN
+PASS PR creation dry-run points at right branch/base :: would open agent/rmw01nbrh -> develop
+PASS switched back to develop
+PASS rehearsal branch cleaned up (best effort) :: deleted
+checks 15, failed 0
+```
+
+### 三个踩到的真问题（都已修进演练脚本）
+
+1. **空白仓库没有 HEAD**：`git --git-dir <bare> rev-parse HEAD` 会报 `Needed a single revision`，必须按 `refs/heads/<branch>` 取。
+2. **克隆里没有身份**：`git commit` 报 `Author identity unknown`；演练脚手架必须先 `git config user.name/email`。
+3. **他们仓库的 `temp/` 是 gitignore 的**：一开始把演练文件写到 `temp/agent/`，`git add -A` 什么也没加，commit 直接失败。
+   改写到 `docs/records/rehearse-<tag>/`（AGENTS.md §2.4 明列的 Agent 工作记录位置）后一次通过。
+
+第 3 条正好验证了他们的规矩是有效的：**产物位置不对，连提交都提交不了**。
