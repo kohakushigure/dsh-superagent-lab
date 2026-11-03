@@ -16,6 +16,14 @@
 - `scripts/hosting/github-poll.mjs`: GitHub issue/PR comment source with ETag + watermark dedupe and rate-limit backoff.
 - `research/papers/README.md`: related-work mapping (ReAct, Reflexion, Voyager, Toolformer, Generative Agents, AutoGen, MetaGPT, CoALA, AgentBench, CAMEL).
 
+
+### loop-lab round 2
+- `skillsBlock()` now loads `references/*.md` too, bounded by `WORKER_SKILL_BUDGET` (default 6000) with an explicit truncation marker.
+- `channel.mjs`: `formatPrBody()` + `createPullRequest()` (draft by default, never merges); router supports `channel: "github-pr"` with `report.branch`.
+- `router.drain()` now waits for Channel deliveries before closing, fixing an engine-close race.
+- demo forces the offline brain in the ablation phase (`.env.local` no longer leaks the real model into K) and passes 30/30 again.
+- `scripts/hosting/rehearse-patent.mjs`: rehearsal against a local clone of the patent repo (6/6 checks).
+
 ### Changed
 - Worker prompt + duplicate-call gate: identical `(tool,args)` calls are blocked and reported, fixing a real-model loop that the in-process watchdog used to kill.
 - Env file `local-superagent/.env.local` is auto-loaded, so a restart (by watchdog or shell) keeps the model configuration.

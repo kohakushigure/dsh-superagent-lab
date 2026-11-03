@@ -104,16 +104,35 @@ export class Worker {
     return 'deliverable.md';
   }
 
-  /** 读项目自带的 .dsh/skills 下的 SKILL.md 注入 worker（对应项目的强制 skill 入口）。 */
+  /**
+   * 读项目自带的 .dsh/skills 下的 SKILL.md 与其 references/*.md，注入 worker。
+   * 预算由 cfg.worker.skillBudget 控制（默认 6000 字符），超了按文件顺序截断，
+   * 并在被截断处留下 "…[truncated]" 标记——不让模型以为拿到了全文。
+   */
   skillsBlock(workdir) {
     const base = path.join(workdir, '.dsh', 'skills');
     if (!fs.existsSync(base)) return '';
-    const out = [];
+    const budget = (this.cfg.worker && this.cfg.worker.skillBudget) || 6000;
+    let used = 0;
+    const parts = [];
+    const take = (label, text) => {
+      const left = budget - used;
+      if (left <= 0) return;
+      const body = text.length > left ? text.slice(0, left) + '\n…[truncated]' : text;
+      used += body.length;
+      parts.push('--- ' + label + ' ---\n' + body);
+    };
     for (const name of fs.readdirSync(base).slice(0, 2)) {
-      const file = path.join(base, name, 'SKILL.md');
-      if (fs.existsSync(file)) out.push('--- SKILL: ' + name + ' ---\n' + truncate(fs.readFileSync(file, 'utf8'), 1500));
+      const dir = path.join(base, name);
+      const skill = path.join(dir, 'SKILL.md');
+      if (fs.existsSync(skill)) take('SKILL: ' + name, fs.readFileSync(skill, 'utf8'));
+      const refs = path.join(dir, 'references');
+      if (fs.existsSync(refs)) {
+        const files = fs.readdirSync(refs).filter((f) => f.endsWith('.md')).sort();
+        for (const f of files) take('REF: ' + name + '/' + f, fs.readFileSync(path.join(refs, f), 'utf8'));
+      }
     }
-    return out.join('\n\n');
+    return parts.join('\n\n');
   }
 
   async run(taskId) {

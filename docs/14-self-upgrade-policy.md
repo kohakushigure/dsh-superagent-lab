@@ -68,3 +68,31 @@ Policy(版本)  ──► 谁能提需求（allowlist）+ 每项目的 Mandate �
 | P1 | `gh pr create` 白名单 + PR 描述模板（关联 issue、验证表） | 半天 |
 | P2 | 修 demo 的 K 段崩溃（跟托管能力无关，但影响验收观感） | 2 小时 |
 | P3 | 在 fork 上做一次完整的 issue → 分支 → 测试 → PR 演练 | 半天 |
+## 7. 第二轮（loop-lab）：P0–P3 全部落地
+
+| 项 | 做了什么 | 验证 |
+| --- | --- | --- |
+| **P0 skill references** | `skillsBlock()` 现在读 `SKILL.md` + `references/*.md`，受 `WORKER_SKILL_BUDGET`（默认 6000 字符）约束，截断处标 `…[truncated]` | 新用例：references 被加载、预算上限生效、截断标记存在 |
+| **P1 PR 创建** | `channel.mjs` 新增 `formatPrBody()` 与 `createPullRequest()`（默认 draft，合并永不在此发生）；`router.deliver()` 支持 `channel: "github-pr"` + `report.branch` | 新用例：PR 描述含 Closes #N / 实跑 / NOT RUN；dry-run 输出 `would open agent/x -> develop` |
+| **P2 demo 消融崩溃** | 根因：ablation 的 `loadConfig(process.env)` 继承了 `.env.local` 里的真模型 key，K 段变成 20 次真模型调用后崩；同时 `drain()` 没等 Channel 回写 | demo 全绿：**checks passed: 30, failed: 0**（exit 0） |
+| **P3 真项目演练** | `scripts/hosting/rehearse-patent.mjs`：把他们的仓库浅克隆到 `dist/rehearse/patent`，用项目规则跑**他们真实存在的命令** | 6/6 通过（见下） |
+
+### P3 演练输出（在克隆上，未触碰原仓库）
+
+```
+PASS allowed: pytest version        :: exit=0 / pytest 9.1.1
+PASS allowed: their route checker   :: exit=1 / usage: check_pr_route.py [-h] --head HEAD --base BASE
+PASS denied: full pytest run        :: command not in project allowlist: python -m pytest -q
+PASS denied: git commit             :: command not in project allowlist: git commit -m x
+PASS denied: gh pr merge            :: gh call not in project allowlist: pr merge 1 --merge
+PASS denied: read outside workdir   :: path escapes worker workdir: ../../etc/passwd
+checks 6, failed 0
+```
+
+注意第二条：他们的 `check_pr_route.py` 退出码是 1，但**这是它自己的 usage 提示**（缺 `--head/--base`），不是我们的失败——说明命令确实被允许执行了。
+
+### 当前测试口径
+
+- `node --test`：**38/38**
+- `node bin/demo.mjs`：**30/30**，exit 0
+- 交付物、回写、PR 模板、skill 预算都有专门用例

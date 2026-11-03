@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { newId } from './db.mjs';
 import { cleanTitle } from './mock.mjs';
 import { projectForThread, projectRule } from './config.mjs';
-import { parseThread, formatReport, postIssueComment } from './channel.mjs';
+import { parseThread, formatReport, postIssueComment, formatPrBody, createPullRequest } from './channel.mjs';
 
 function safeJson(v) { try { return JSON.parse(v); } catch { return {}; } }
 import { truncate } from './log.mjs';
@@ -33,6 +33,7 @@ export class Router {
     this.logger = o.logger;
     this.clock = o.clock || (() => Date.now());
     this.runs = new Set();
+    this.deliveries = new Set();
     this.inflight = new Set();
     this.queue = [];
     this.cap = this.cfg.worker.maxConcurrency > 0 ? this.cfg.worker.maxConcurrency : Infinity;
@@ -286,8 +287,22 @@ export class Router {
     if (!rule || rule.channel !== 'github') return null;
     const t = parseThread(task.thread_id);
     if (!t) return null;
-    const body = formatReport(task, task.report ? safeJson(task.report) : (result && result.report) || {});
+    const report = task.report ? safeJson(task.report) : (result && result.report) || {};
     const dryRun = Boolean(this.cfg.channel && this.cfg.channel.dryRun);
+    if (rule.channel === 'github-pr' && report.branch) {
+      const body = formatPrBody(task, report, t.number);
+      const res = await createPullRequest({
+        repo: t.repo,
+        head: report.branch,
+        base: rule.base || 'main',
+        title: (report.prTitle || task.title || 'agent: changes').slice(0, 120),
+        body,
+        dryRun
+      });
+      this.repo.event({ kind: res.ok ? 'pr_opened' : 'pr_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { dryRun, head: report.branch, output: res.output } });
+      return res;
+    }
+    const body = formatReport(task, report);
     const res = await postIssueComment({ repo: t.repo, number: t.number, body, dryRun });
     this.repo.event({ kind: res.ok ? 'channel_posted' : 'channel_failed', actor: 'router', taskId, threadId: task.thread_id, detail: { dryRun, output: res.output } });
     return res;

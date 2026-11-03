@@ -297,6 +297,7 @@ async function ablation(enabled) {
     stateDir,
     logFile: path.join(EVID, 'ablation-' + (enabled ? 'on' : 'off') + '.jsonl'),
     passthrough: { enabled },
+    llm: { apiKey: '' },
     worker: { shellProbe: false },
     filter: { batchWindowMs: 10 }
   });

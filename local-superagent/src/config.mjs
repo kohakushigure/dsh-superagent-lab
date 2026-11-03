@@ -145,7 +145,8 @@ export function loadConfig(env, overrides) {
       maxSteps: int(e.WORKER_MAX_STEPS, 6),
       shellProbe: bool(e.WORKER_SHELL_PROBE, true),
       shellTimeoutMs: int(e.WORKER_SHELL_TIMEOUT_MS, 15000),
-      maxAttempts: int(e.WORKER_MAX_ATTEMPTS, 2)
+      maxAttempts: int(e.WORKER_MAX_ATTEMPTS, 2),
+      skillBudget: int(e.WORKER_SKILL_BUDGET, 6000)
     },
     router: {
       tickIdleMs: int(e.ROUTER_TICK_IDLE_MS, 120)
