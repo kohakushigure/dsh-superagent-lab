@@ -9,7 +9,9 @@ param(
   [int]$SelfcheckSeconds = 300,
   [string]$ProjectRoot = "",
   [switch]$Status,
-  [switch]$Stop
+  [switch]$Stop,
+  # the scheduled task passes -Hidden; accept it so parameter binding cannot fail
+  [switch]$Hidden
 )
 $ErrorActionPreference = "Stop"
 $root = if ($ProjectRoot) { $ProjectRoot } else { Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
@@ -17,6 +19,7 @@ $sa = Join-Path $root "local-superagent"
 $out = Join-Path $sa "evidence\hosting"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $pidFile = Join-Path $out "pids.json"
+. (Join-Path $PSScriptRoot "spawn.ps1")
 
 function Get-NodeProc([string]$pattern) {
   Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
@@ -68,7 +71,7 @@ if (-not $loop) {
   if (-not $env:MAX_CONCURRENCY) { $env:MAX_CONCURRENCY = "$Cap" }
   $sp = @{ FilePath = "node"; ArgumentList = @("bin/superagent.mjs","start","--port","$Port"); WorkingDirectory = $sa; WindowStyle = "Hidden"; PassThru = $true;
            RedirectStandardOutput = (Join-Path $out "loop.out.log"); RedirectStandardError = (Join-Path $out "loop.err.log") }
-  $p = Start-Process @sp
+  $p = Start-LoopProcess -NodeArgs ("bin/superagent.mjs start --port " + $Port) -WorkDir $sa -OutLog (Join-Path $out "loop.out.log") -ErrLog (Join-Path $out "loop.err.log")
   for ($i = 0; $i -lt 60; $i++) { Start-Sleep -Milliseconds 250; try { $null = Invoke-RestMethod "http://127.0.0.1:$Port/api/health" -TimeoutSec 2; break } catch {} }
   $loop = Get-LoopPid
   "loop     : started pid=$loop"
@@ -79,7 +82,7 @@ $sc = Get-NodeProc "selfcheck\.mjs"
 if (-not $sc) {
   $sp2 = @{ FilePath = "node"; ArgumentList = @("scripts\hosting\selfcheck.mjs","--port","$Port","--interval","$SelfcheckSeconds"); WorkingDirectory = $root; WindowStyle = "Hidden"; PassThru = $true;
             RedirectStandardOutput = (Join-Path $out "selfcheck.out.log"); RedirectStandardError = (Join-Path $out "selfcheck.err.log") }
-  $p2 = Start-Process @sp2
+  $p2 = Start-LoopProcess -NodeArgs ("scripts\hosting\selfcheck.mjs --port " + $Port + " --interval " + $SelfcheckSeconds) -WorkDir $root -OutLog (Join-Path $out "selfcheck.out.log") -ErrLog (Join-Path $out "selfcheck.err.log")
   "selfcheck: started pid=$($p2.Id) every ${SelfcheckSeconds}s"
 } else { "selfcheck: already running pid=" + (($sc | ForEach-Object { $_.ProcessId }) -join ",") }
 
@@ -88,7 +91,7 @@ $wd = Get-NodeProc "watchdog-ext\.mjs"
 if (-not $wd) {
   $sp3 = @{ FilePath = "node"; ArgumentList = @("scripts\hosting\watchdog-ext.mjs","--port","$Port"); WorkingDirectory = $root; WindowStyle = "Hidden"; PassThru = $true;
             RedirectStandardOutput = (Join-Path $out "watchdog-ext.out.log"); RedirectStandardError = (Join-Path $out "watchdog-ext.err.log") }
-  $p3 = Start-Process @sp3
+  $p3 = Start-LoopProcess -NodeArgs ("scripts\hosting\watchdog-ext.mjs --port " + $Port) -WorkDir $root -OutLog (Join-Path $out "watchdog-ext.out.log") -ErrLog (Join-Path $out "watchdog-ext.err.log")
   "watchdog : started pid=$($p3.Id)"
 } else { "watchdog : already running pid=" + (($wd | ForEach-Object { $_.ProcessId }) -join ",") }
 

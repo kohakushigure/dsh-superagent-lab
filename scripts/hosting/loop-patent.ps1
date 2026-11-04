@@ -20,6 +20,7 @@ $env:PROJECTS = @'
 '@
 Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Milliseconds 500
-Start-Process -FilePath "node" -ArgumentList @("bin/superagent.mjs","start","--port","$Port") -WorkingDirectory $sa -WindowStyle Hidden -RedirectStandardOutput (Join-Path $out "loop-patent.out.log") -RedirectStandardError (Join-Path $out "loop-patent.err.log")
+. (Join-Path $PSScriptRoot "spawn.ps1")
+$null = Start-LoopProcess -NodeArgs ("bin/superagent.mjs start --port " + $Port) -WorkDir $sa -OutLog (Join-Path $out "loop-patent.out.log") -ErrLog (Join-Path $out "loop-patent.err.log")
 Start-Sleep -Seconds 6
 try { $h = Invoke-RestMethod ("http://127.0.0.1:" + $Port + "/api/health") -TimeoutSec 5; "llm=" + $h.llm } catch { "loop down" }
