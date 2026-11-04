@@ -95,5 +95,16 @@ if (-not $wd) {
   "watchdog : started pid=$($p3.Id)"
 } else { "watchdog : already running pid=" + (($wd | ForEach-Object { $_.ProcessId }) -join ",") }
 
+# 4) 可选：专利项目的独立 loop（3091）——它有自己的 PROJECTS/状态目录
+$patentLauncher = Join-Path $PSScriptRoot "loop-patent.ps1"
+if (Test-Path $patentLauncher) {
+  $patentUp = $false
+  try { $null = Invoke-RestMethod "http://127.0.0.1:3091/api/health" -TimeoutSec 2; $patentUp = $true } catch {}
+  if (-not $patentUp) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $patentLauncher -Port 3091 | Out-Null
+    "patent   : started on 3091"
+  } else { "patent   : already running on 3091" }
+}
+
 @{ loop = $loop; at = (Get-Date).ToString("o") } | ConvertTo-Json | Set-Content $pidFile -Encoding UTF8
 "all up on port $Port"
