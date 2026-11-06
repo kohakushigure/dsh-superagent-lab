@@ -16,7 +16,7 @@ function Start-LoopProcess {
   $redir = ""
   if ($OutLog) { $redir = $redir + " >> " + (Quote-Arg $OutLog) }
   if ($ErrLog) { $redir = $redir + " 2>> " + (Quote-Arg $ErrLog) }
-  $line = "/c cd /d " + (Quote-Arg $WorkDir) + " && node " + $NodeArgs + $redir
+  $line = "/c cd /d " + (Quote-Arg $WorkDir) + " && start " + (Quote-Arg "") + " /b node " + $NodeArgs + $redir
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $env:ComSpec
   $psi.Arguments = $line

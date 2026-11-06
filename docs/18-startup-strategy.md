@@ -41,3 +41,32 @@ loop 进程的父进程是 cmd，不是 DSH——所以关掉 DSH 不会带走 l
 
 计划任务用 `-Hidden` 传参，而 `start-all.ps1` 现在接受 `-Hidden`（见 docs/17）。
 如果重写这个脚本，**必须保留这个参数**，否则又会静默 result=1。
+## 更新（2026-11-06）：10 分钟保活任务已移除
+
+用户反馈每 10 分钟弹一个 cmd 窗口，影响正常用电脑。已 `Unregister-ScheduledTask local-superagent-keepalive`。
+
+弹出的根因有两个：
+
+1. 任务动作是 `powershell.exe -WindowStyle Hidden -File start-all.ps1`——被计划任务以交互身份拉起时，窗口仍会闪；
+2. `spawn.ps1` 里用 `cmd /c ... && node ...`，cmd 会一直等着 node，导致任务永远处于 Running（`LastTaskResult=2147946720`），
+   而且这个 cmd 自己也带控制台。
+
+现在的做法：
+
+| 项 | 变化 |
+| --- | --- |
+| 保活任务 | **已删除**（只保留登录时那一次） |
+| 登录任务动作 | 改成 `wscript.exe //B //Nologo run-hidden.vbs` → 窗口样式 0，**完全无窗** |
+| 子进程启动 | `cmd /c start "" /b node ...` → cmd 立刻退出，node 继续跑（有日志重定向，任务不再卡 Running） |
+
+验证：`LastTaskResult=0`、任务状态 `Ready`、`start-all` 秒回、杀掉 3082 后重启能自愈、进程数稳定为 2。
+
+## 代价
+
+没有 10 分钟保活，进程意外死掉后**不会自动重拉**（除了 loop 内的 watchdog-ext 会重启 loop 自身）。
+要恢复保活又不想被窗口打扰，用同样的 VBS 动作再建一个重复任务即可：
+
+```
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo ""...\run-hidden.vbs"""
+$trig = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 10) -RepetitionDuration (New-TimeSpan -Days 3650)
+```
